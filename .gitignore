@@ -1,4 +1,10 @@
-npm-debug.log*
+*.log*
+verdaccio-*.tgz
+.DS_Store
+build/
+dist/
+.eslintcache
 node_modules
-/build/
-/.idea/
+
+## IDE
+.idea/

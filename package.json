@@ -1,29 +1,53 @@
 {
   "name": "verdaccio-security-filter",
-  "version": "0.0.1",
-  "description": "An amazing verdaccio plugin",
+  "version": "1.0.0",
+  "description": "Advanced security filter plugin for Verdaccio with version range blocking and fallback strategies",
   "main": "build/index.js",
   "types": "build/index.d.ts",
+  "keywords": [
+    "verdaccio",
+    "plugin",
+    "filter",
+    "security",
+    "npm",
+    "registry",
+    "vulnerability",
+    "semver",
+    "version-control"
+  ],
   "engines": {
-    "node": ">=12"
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "verdaccio": ">=5.0.0"
   },
   "dependencies": {
     "semver": "^7.7.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
+    "@types/node": "^20.10.0",
     "@types/semver": "^7.7.0",
     "@verdaccio/types": "^10.8.0",
     "typescript": "^5.9.3"
   },
-  "keywords": [
-    "verdaccio-"
-  ],
+  "author": "Your Name <your.email@example.com>",
   "license": "MIT",
-  "repository": "empty/security-filter",
-  "author": "empty <empty>",
-  "scripts": {
-    "build": "tsc",
-    "lint": "eslint \"**/*.{js,ts}\""
-  }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/verdaccio-security-filter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/verdaccio-security-filter/issues"
+  },
+  "homepage": "https://github.com/yourusername/verdaccio-security-filter#readme",
+  "files": [
+    "index.js",
+    "types.d.ts",
+    "README.md",
+    "LICENSE"
+  ]
 }
