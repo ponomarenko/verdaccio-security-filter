@@ -34,16 +34,19 @@
     "@verdaccio/types": "^10.8.0",
     "typescript": "^5.9.3"
   },
-  "author": "Your Name <your.email@example.com>",
+  "author": {
+    "name": "Vitaliy Ponomarenko",
+    "url": "https://github.com/ponomarenko"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/verdaccio-security-filter.git"
+    "url": "https://github.com/ponomarenko/verdaccio-security-filter.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/verdaccio-security-filter/issues"
+    "url": "https://github.com/ponomarenko/verdaccio-security-filter/issues"
   },
-  "homepage": "https://github.com/yourusername/verdaccio-security-filter#readme",
+  "homepage": "https://github.com/ponomarenko/verdaccio-security-filter#readme",
   "files": [
     "index.js",
     "types.d.ts",
