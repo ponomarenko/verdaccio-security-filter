@@ -123,7 +123,7 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
         }
 
         // 4. Validate metadata
-        if (!this._validateMetadata(packageName, version)) {
+        if (!this._validateMetadata(packageName)) {
             throw new Error(`Package metadata validation failed for ${versionKey}`);
         }
 
