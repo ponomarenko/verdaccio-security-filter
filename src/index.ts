@@ -357,7 +357,7 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
      * @param {string} version - Package version
      * @returns {boolean} True if valid
      */
-    private _validateMetadata(packageName: string, version: string): boolean {
+    private _validateMetadata(packageName: string): boolean {
         // Basic package name validation
         if (!packageName || packageName.length === 0) {
             return false;

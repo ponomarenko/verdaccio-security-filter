@@ -20,7 +20,7 @@
   },
   "scripts": {
     "test": "jest",
-    "lint": "eslint ."
+    "lint": "eslint src"
   },
   "peerDependencies": {
     "verdaccio": ">=5.0.0"
@@ -29,10 +29,13 @@
     "semver": "^7.7.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.1",
     "@types/node": "^20.10.0",
     "@types/semver": "^7.7.0",
     "@verdaccio/types": "^10.8.0",
-    "typescript": "^5.9.3"
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0"
   },
   "author": {
     "name": "Vitaliy Ponomarenko",
