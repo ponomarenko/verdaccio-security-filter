@@ -1,14 +1,31 @@
 {
+  "compileOnSave": false,
   "compilerOptions": {
-    "target": "es6",
+    "target": "esnext",
     "module": "commonjs",
     "declaration": true,
     "allowJs": false,
     "noImplicitAny": false,
     "strict": true,
-    "outDir": "./lib",
+    "rootDir": "./src",
+    "outDir": "./build",
     "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "types": [
+      "node"
+    ]
   },
-  "include": ["src/*.ts", "types/*.ts"]
+  "include": [
+    "src/**/*"
+  ],
+  "exclude": [
+    "**/build",
+    "node_modules",
+    "**/node_modules",
+    "**/coverage",
+    "**/*.spec.ts",
+    "**/test",
+    "**/__tests__",
+    "**/*.test.ts"
+  ]
 }

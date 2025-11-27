@@ -5,7 +5,7 @@ Object.defineProperty(exports, '__esModule', {
 });
 exports.default = void 0;
 
-let _index = _interopRequireDefault(require('./lib/index'));
+let _index = _interopRequireDefault(require('./build/index'));
 
 function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
