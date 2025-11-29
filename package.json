@@ -19,7 +19,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "jest",
+    "build": "tsc",
     "lint": "eslint src"
   },
   "peerDependencies": {
@@ -53,7 +53,6 @@
   "files": [
     "index.js",
     "types.d.ts",
-    "README.md",
-    "LICENSE"
+    "README.md"
   ]
 }

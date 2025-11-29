@@ -7,7 +7,7 @@ import { FilterResult, SecurityConfig, SecurityRules, VersionData, VersionRangeR
 export default class SecurityFilterPlugin implements IPluginStorageFilter<SecurityConfig> {
     public logger: Logger;
     public config: SecurityConfig;
-    private securityRules: SecurityRules;
+    private readonly securityRules: SecurityRules;
 
     /**
      * Creates a new SecurityFilterPlugin instance
@@ -36,8 +36,6 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
 
     /**
      * Filter package metadata before serving
-     * @param {Package} packageInfo - Package metadata
-     * @returns {Package} Filtered package metadata
      */
     public async filter_metadata(packageInfo: Package): Promise<Package> {
         const packageName = packageInfo.name;
@@ -97,7 +95,7 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
         this.logger.info(`[Security Filter] Validating publish: ${packageName}@${version}`);
 
         // 1. Check package size
-        if (tarball && tarball.length) {
+        if (tarball?.length) {
             const size = tarball.length;
             if (size < this.securityRules.minPackageSize) {
                 throw new Error(`Package size ${size} bytes is below minimum ${this.securityRules.minPackageSize} bytes`);
