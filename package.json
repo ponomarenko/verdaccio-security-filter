@@ -15,12 +15,18 @@
     "semver",
     "version-control"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "scripts": {
-    "build": "tsc",
-    "lint": "eslint src"
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "prepack": "npm run build",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm test --if-present"
   },
   "peerDependencies": {
     "verdaccio": ">=5.0.0"
@@ -29,13 +35,13 @@
     "semver": "^7.7.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@types/node": "^20.10.0",
-    "@types/semver": "^7.7.0",
-    "@verdaccio/types": "^10.8.0",
-    "eslint": "^9.39.1",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.48.0"
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "@types/semver": "^7.0.0",
+    "@verdaccio/types": "^10.0.0",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0",
+    "typescript": "^5.9.3"
   },
   "author": {
     "name": "Vitaliy Ponomarenko",
@@ -51,8 +57,7 @@
   },
   "homepage": "https://github.com/ponomarenko/verdaccio-security-filter#readme",
   "files": [
-    "index.js",
-    "types.d.ts",
+    "build/",
     "README.md"
   ]
 }

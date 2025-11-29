@@ -222,33 +222,6 @@ range: '1.x'     # >=1.0.0 <2.0.0
 range: '*'       # All versions
 ```
 
-## Type Checking with JSDoc
-
-The plugin includes full JSDoc type annotations for TypeScript type checking:
-
-```bash
-# Type check without compilation
-npm run typecheck
-
-# Or use TypeScript directly
-npx tsc --noEmit
-```
-
-### Example Type Usage
-
-```javascript
-/**
- * @type {import('./types').VersionRangeRule}
- */
-const rule = {
-  package: "lodash",
-  range: "^4.17.0",
-  strategy: "fallback",
-  fallbackVersion: "4.17.21",
-  reason: "Security fix",
-};
-```
-
 ## Testing
 
 ### Start Verdaccio
@@ -489,21 +462,10 @@ filter_metadata(packageInfo)
 async validate_publish(packageName, version, tarball)
 ```
 
-## Contributing
-
-Contributions welcome! Please:
-
-1. Add JSDoc types for new functions
-2. Update `types.d.ts` with new interfaces
-3. Run type checking: `npm run typecheck`
-4. Add tests for new features
-5. Update documentation
-
 ## License
 
 MIT
 
 ## Support
 
-- Issues: https://github.com/yourusername/verdaccio-security-filter/issues
-- Discussions: https://github.com/yourusername/verdaccio-security-filter/discussions
+- Issues: https://github.com/ponomarenko/verdaccio-security-filter/issues
