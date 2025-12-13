@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.0...v1.0.1) (2025-12-13)
+
+
+### Bug Fixes
+
+* remove NPM_TOKEN for OIDC authentication ([#3](https://github.com/ponomarenko/verdaccio-security-filter/issues/3)) ([28a234c](https://github.com/ponomarenko/verdaccio-security-filter/commit/28a234cb0396cfff9b7c49e067ad8fd26fffab93))
+
 ## 1.0.0 (2025-12-13)
 
 
