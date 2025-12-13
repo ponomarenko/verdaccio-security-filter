@@ -6,6 +6,7 @@ on:
       - main
 
 permissions:
+  id-token: write  # Required for OIDC
   contents: write
   pull-requests: write
 
@@ -33,10 +34,10 @@ jobs:
       id-token: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
@@ -45,7 +46,10 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test
+        run: npm run test --if-present
+
+      - name: Verify package contents
+        run: npm pack --dry-run
 
       - name: Build package
         run: npm run build
