@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.5](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.4...v1.0.5) (2025-12-13)
+
+
+### Bug Fixes
+
+* add provenance flag for OIDC publishing ([089c8fb](https://github.com/ponomarenko/verdaccio-security-filter/commit/089c8fb58ac4d3ee6dbd3452c85213144b73cb97))
+
 ## [1.0.4](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.3...v1.0.4) (2025-12-13)
 
 

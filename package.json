@@ -1,6 +1,6 @@
 {
   "name": "verdaccio-security-filter",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Advanced security filter plugin for Verdaccio with version range blocking and fallback strategies",
   "main": "build/index.js",
   "types": "build/index.d.ts",
