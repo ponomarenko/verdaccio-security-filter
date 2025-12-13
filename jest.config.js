@@ -4,10 +4,10 @@ module.exports = {
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
-  globals: {
-    'ts-jest': {
+  transform: {
+    '^.+\\.ts$': ['ts-jest', {
       tsconfig: 'tsconfig.test.json',
-    },
+    }],
   },
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -21,6 +21,8 @@ module.exports = {
       statements: 60,
     },
   },
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov', 'html'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   verbose: true,
 };

@@ -72,6 +72,13 @@ export interface SecurityConfig extends Config {
     logger?: LoggerConfig;
     metrics?: MetricsConfig;
     packageAge?: PackageAgeConfig;
+
+    // Error handling strategy
+    errorHandling?: {
+        onFilterError?: 'fail-open' | 'fail-closed';
+        onCveCheckError?: 'fail-open' | 'fail-closed';
+        onLicenseCheckError?: 'fail-open' | 'fail-closed';
+    };
 }
 
 export interface SecurityRules {
