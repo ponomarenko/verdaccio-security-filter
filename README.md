@@ -2,6 +2,8 @@
 
 Advanced security filter plugin for Verdaccio with **dual-layer protection architecture** combining middleware interception and metadata filtering for comprehensive package security.
 
+[![npm version](https://img.shields.io/npm/v/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
+[![npm downloads](https://img.shields.io/npm/dm/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
 [![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)](./tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)]()
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)]()
