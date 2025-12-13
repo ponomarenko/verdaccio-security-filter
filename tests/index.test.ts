@@ -1,0 +1,381 @@
+import SecurityFilterPlugin from '../src/index';
+import { PluginOptions } from '@verdaccio/types';
+
+describe('SecurityFilterPlugin', () => {
+    const pluginOptions = {
+        config: {},
+        logger: {
+            error: jest.fn(),
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            child: jest.fn(),
+            trace: jest.fn(),
+            http: jest.fn(),
+        },
+    } as any;
+
+    describe('constructor', () => {
+        it('should initialize with default configuration', () => {
+            const config = {
+                mode: 'blacklist',
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            expect(plugin).toBeDefined();
+            expect(plugin.config).toBeDefined();
+            expect(plugin.logger).toBeDefined();
+        });
+
+        it('should initialize with custom logger config', () => {
+            const config = {
+                mode: 'whitelist',
+                logger: {
+                    level: 'debug',
+                    enabled: true,
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            expect(plugin.config.logger).toBeDefined();
+            expect(plugin.config.logger?.level).toBe('debug');
+        });
+
+        it('should parse version range rules', () => {
+            const config = {
+                versionRangeRules: [
+                    {
+                        package: 'lodash',
+                        range: '4.17.0 - 4.17.20',
+                        strategy: 'block',
+                        reason: 'Vulnerable',
+                    },
+                ],
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            expect(plugin).toBeDefined();
+        });
+
+        it('should initialize whitelist checker in whitelist mode', () => {
+            const config = {
+                mode: 'whitelist',
+                whitelist: {
+                    packages: ['lodash', 'express'],
+                    patterns: [],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            expect(plugin.config.mode).toBe('whitelist');
+            expect(plugin.config.whitelist).toBeDefined();
+        });
+    });
+
+    describe('register_middlewares', () => {
+        it('should register middleware function', () => {
+            const config = {
+                mode: 'whitelist',
+                whitelist: {
+                    packages: ['lodash'],
+                    patterns: [],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            const app = {
+                use: jest.fn(),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            expect(app.use).toHaveBeenCalled();
+        });
+
+        it('should create middleware that can process requests', () => {
+            const config = {
+                mode: 'whitelist',
+                whitelist: {
+                    packages: ['lodash'],
+                    patterns: [],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            expect(middlewareFunction).toBeDefined();
+            expect(typeof middlewareFunction).toBe('function');
+        });
+    });
+
+    describe('middleware blocking logic', () => {
+        it('should block tarball downloads for non-whitelisted packages', async () => {
+            const config = {
+                mode: 'whitelist',
+                whitelist: {
+                    packages: ['lodash'],
+                    patterns: [],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const req = {
+                url: '/hawk/-/hawk-9.0.2.tgz',
+            } as any;
+
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+                send: jest.fn(),
+            } as any;
+
+            const next = jest.fn();
+
+            await middlewareFunction(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    error: 'Package blocked by security filter',
+                    package: 'hawk',
+                })
+            );
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        it('should allow tarball downloads for whitelisted packages', async () => {
+            const config = {
+                mode: 'whitelist',
+                whitelist: {
+                    packages: ['lodash'],
+                    patterns: [],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const req = {
+                url: '/lodash/-/lodash-4.17.21.tgz',
+            } as any;
+
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+                send: jest.fn(),
+            } as any;
+
+            const next = jest.fn();
+
+            await middlewareFunction(req, res, next);
+
+            expect(res.status).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalled();
+        });
+
+        it('should intercept metadata responses for blocked packages', async () => {
+            const config = {
+                mode: 'whitelist',
+                whitelist: {
+                    packages: ['lodash'],
+                    patterns: [],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const req = {
+                url: '/hawk',
+            } as any;
+
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn(function (this: any, body: any) {
+                    this._lastJsonBody = body;
+                    return this;
+                }),
+                send: jest.fn(),
+            } as any;
+
+            const next = jest.fn();
+
+            await middlewareFunction(req, res, next);
+
+            // Middleware should have replaced res.json
+            expect(typeof res.json).toBe('function');
+            expect(next).toHaveBeenCalled();
+
+            // Simulate Verdaccio calling res.json with package metadata
+            res.json({
+                name: 'hawk',
+                versions: { '9.0.2': {} },
+                'dist-tags': { latest: '9.0.2' },
+            });
+
+            // Check that response was modified
+            expect(res._lastJsonBody).toBeDefined();
+            expect(res._lastJsonBody.name).toBe('hawk');
+            expect(res._lastJsonBody.versions).toEqual({});
+            expect(res._lastJsonBody.security).toBeDefined();
+            expect(res._lastJsonBody.security.blocked).toBe(true);
+        });
+
+        it('should block packages by pattern', async () => {
+            const config = {
+                mode: 'blacklist',
+                blockedPatterns: ['^evil-.*'],
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const req = {
+                url: '/evil-package/-/evil-package-1.0.0.tgz',
+            } as any;
+
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+                send: jest.fn(),
+            } as any;
+
+            const next = jest.fn();
+
+            await middlewareFunction(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    reason: 'Package name matches blocked pattern',
+                })
+            );
+        });
+
+        it('should block packages by scope', async () => {
+            const config = {
+                mode: 'blacklist',
+                blockedScopes: ['@malicious'],
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const req = {
+                url: '/@malicious/package/-/package-1.0.0.tgz',
+            } as any;
+
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+                send: jest.fn(),
+            } as any;
+
+            const next = jest.fn();
+
+            await middlewareFunction(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    reason: 'Package scope not allowed',
+                })
+            );
+        });
+
+        it('should block specific versions', async () => {
+            const config = {
+                mode: 'blacklist',
+                blockedVersions: ['lodash@4.17.20'],
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+
+            let middlewareFunction: any;
+            const app = {
+                use: jest.fn((fn) => {
+                    middlewareFunction = fn;
+                }),
+            } as any;
+
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const req = {
+                url: '/lodash/-/lodash-4.17.20.tgz',
+            } as any;
+
+            const res = {
+                status: jest.fn().mockReturnThis(),
+                json: jest.fn().mockReturnThis(),
+                send: jest.fn(),
+            } as any;
+
+            const next = jest.fn();
+
+            await middlewareFunction(req, res, next);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    reason: 'Exact version match in blocklist',
+                })
+            );
+        });
+    });
+});

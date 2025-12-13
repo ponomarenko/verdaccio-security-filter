@@ -1,0 +1,222 @@
+# High Security Configuration Example
+# Maximum security setup for sensitive environments (government, finance, healthcare)
+
+# Layer 1: Metadata filtering
+filters:
+  security-filter:
+    enabled: true
+
+    # WHITELIST MODE: Nothing allowed unless explicitly approved
+    mode: whitelist
+
+    # Minimal approved package list (expand as needed)
+    whitelist:
+      packages:
+        # Core utilities (carefully vetted)
+        - lodash
+        - axios
+
+        # Framework essentials
+        - express
+        - react
+        - react-dom
+
+        # TypeScript support
+        - typescript
+        - "@types/node"
+        - "@types/react"
+
+      patterns:
+        - "^@mycompany/.*"      # Internal packages only
+        - "^@types/.*"          # TypeScript definitions
+
+      versions:
+        # Lock to exact versions for predictability
+        lodash: "4.17.21"
+        axios: "1.6.0"
+        express: "4.18.2"
+        react: "18.2.0"
+        react-dom: "18.2.0"
+        typescript: "5.3.3"
+
+    # Aggressive CVE scanning
+    cveCheck:
+      enabled: true
+      databases:
+        - osv
+        - github
+        - snyk           # Requires API key
+      severity:
+        - low            # Block ALL severity levels
+        - medium
+        - high
+        - critical
+      autoBlock: true
+      updateInterval: 6   # Update every 6 hours
+      cacheDir: /var/cache/verdaccio-security
+
+    # Strict license requirements
+    licenses:
+      # Only most permissive licenses allowed
+      allowed:
+        - MIT
+        - Apache-2.0
+        - BSD-2-Clause
+        - BSD-3-Clause
+        - ISC
+        - 0BSD
+        - Unlicense
+      # Block all copyleft licenses
+      blocked:
+        - GPL-2.0
+        - GPL-3.0
+        - AGPL-3.0
+        - LGPL-2.1
+        - LGPL-3.0
+        - MPL-2.0
+        - EPL-2.0
+        - CC-BY-SA-4.0
+      requireLicense: true
+
+    # Package age filtering - protect against newly published malicious packages
+    packageAge:
+      enabled: true
+      minPackageAgeDays: 14      # Packages must exist for 2 weeks
+      minVersionAgeDays: 7       # Versions must exist for 1 week
+      warnOnly: false            # Block, don't just warn
+
+    # Comprehensive version blocking
+    versionRangeRules:
+      # Lodash vulnerabilities
+      - package: lodash
+        range: "<4.17.21"
+        strategy: block        # No fallback in high-security mode
+        reason: "Multiple CVEs - must update manually"
+
+      # Minimist vulnerability
+      - package: minimist
+        range: "<1.2.6"
+        strategy: block
+        reason: "CVE-2021-44906: Prototype pollution"
+
+      # Node-fetch vulnerabilities
+      - package: node-fetch
+        range: "<2.6.7"
+        strategy: block
+        reason: "CVE-2022-0235: Information exposure"
+
+      # Axios vulnerabilities
+      - package: axios
+        range: "<1.6.0"
+        strategy: block
+        reason: "Multiple security issues"
+
+      # React vulnerabilities
+      - package: react-dom
+        range: "<18.2.0"
+        strategy: block
+        reason: "XSS vulnerabilities in older versions"
+
+    # Strict scope control
+    allowedScopes:
+      - "@mycompany"     # ONLY internal packages
+      - "@types"         # TypeScript definitions
+    blockedScopes:
+      - "@malicious"
+      - "@suspicious"
+
+    # Strict size limits
+    minPackageSize: 10000         # 10KB minimum (prevent empty packages)
+    maxPackageSize: 10485760      # 10MB maximum (prevent bloat)
+
+    # Aggressive pattern blocking
+    blockedPatterns:
+      # Malicious patterns
+      - "^evil-.*"
+      - ".*-malware$"
+      - ".*hack.*"
+      - ".*crack.*"
+      - ".*backdoor.*"
+      - ".*trojan.*"
+
+      # Typosquatting protection
+      - "^reacr.*"       # react typos
+      - "^expres.*"      # express typos
+      - "^lodahs.*"      # lodash typos
+      - "^axois.*"       # axios typos
+
+      # Suspicious naming
+      - ".*-pro$"
+      - ".*-premium$"
+      - ".*-crack$"
+      - ".*free$"
+
+    # Maximum logging
+    logger:
+      level: debug       # Log everything
+      enabled: true
+      includeTimestamp: true
+
+    # Comprehensive metrics
+    metrics:
+      enabled: true
+      output: file
+      filePath: /var/log/verdaccio/security-metrics.jsonl
+
+    # Strict checksum enforcement
+    enforceChecksum: true
+
+    # Blocked versions (explicit list of known bad versions)
+    blockedVersions:
+      # Lodash
+      - "lodash@4.17.20"
+      - "lodash@4.17.19"
+      - "lodash@4.17.15"
+
+      # Minimist
+      - "minimist@1.2.5"
+      - "minimist@1.2.3"
+      - "minimist@1.2.2"
+
+      # Async
+      - "async@2.6.3"
+      - "async@2.6.2"
+
+      # Request (deprecated)
+      - "request@2.88.2"
+      - "request@2.88.1"
+      - "request@2.88.0"
+
+      # Other known vulnerabilities
+      - "node-fetch@2.6.6"
+      - "node-fetch@2.6.5"
+      - "trim-newlines@3.0.0"
+      - "trim@0.0.1"
+      - "glob-parent@5.1.1"
+
+# Layer 2: Middleware interception
+middlewares:
+  security-filter:
+    enabled: true
+
+# Additional Verdaccio configuration for high security
+security:
+  api:
+    jwt:
+      sign:
+        expiresIn: 1h        # Short JWT expiry
+      verify:
+        clockTolerance: 0
+  web:
+    enable: false            # Disable web UI in production
+
+# Audit logging
+logs:
+  type: stdout
+  format: json
+  level: audit
+
+# Network security
+max_body_size: 10mb          # Match package size limit
+listen:
+  - localhost:4873           # Only local access

@@ -1,13 +1,33 @@
-import { IPluginStorageFilter, Logger, Package, PluginOptions } from '@verdaccio/types';
-
+import { IPluginMiddleware, IPluginStorageFilter, PluginOptions, IBasicAuth, IStorageManager, Package } from '@verdaccio/types';
 import * as semver from 'semver';
+import { Application, Request, Response, NextFunction } from 'express';
 
-import { FilterResult, SecurityConfig, SecurityRules, VersionData, VersionRangeRule } from './types';
+import { SecurityConfig, SecurityRules, VersionRangeRule } from './types';
+import { SecurityLogger } from './lib/logger';
+import { MetricsCollector } from './lib/metrics';
+import { WhitelistChecker } from './lib/whitelist-checker';
+import { CVEChecker } from './lib/cve-checker';
+import { LicenseChecker } from './lib/license-checker';
+import { PackageAgeChecker } from './lib/package-age-checker';
 
-export default class SecurityFilterPlugin implements IPluginStorageFilter<SecurityConfig> {
-    public logger: Logger;
+/**
+ * Security Filter Plugin for Verdaccio
+ * Works with both middleware and filter interfaces for complete protection
+ * Compatible with Verdaccio 6.x and 7.x
+ *
+ * Two-layer protection:
+ * - Layer 1 (filter_metadata): CVE/License/Age checks when metadata is available
+ * - Layer 2 (middleware): Whitelist/Pattern/Scope checks + tarball blocking
+ */
+export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityConfig>, IPluginStorageFilter<SecurityConfig> {
+    public logger: SecurityLogger;
     public config: SecurityConfig;
     private readonly securityRules: SecurityRules;
+    private readonly metrics: MetricsCollector;
+    private readonly whitelistChecker: WhitelistChecker;
+    private readonly cveChecker: CVEChecker;
+    private readonly licenseChecker: LicenseChecker;
+    private readonly packageAgeChecker: PackageAgeChecker;
 
     /**
      * Creates a new SecurityFilterPlugin instance
@@ -15,134 +35,50 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
      * @param {PluginOptions} options - Verdaccio plugin options
      */
     constructor(config: SecurityConfig, options: PluginOptions<SecurityConfig>) {
-        this.config = config;
-        this.logger = options.logger;
+        this.config = config || {} as SecurityConfig;
+
+        // Initialize enhanced logger
+        this.logger = new SecurityLogger(options.logger, this.config.logger);
+
+        // Initialize metrics collector
+        this.metrics = new MetricsCollector(this.config.metrics);
+
+        // Initialize whitelist checker
+        this.whitelistChecker = new WhitelistChecker(this.config.whitelist);
+
+        // Initialize security checkers
+        this.cveChecker = new CVEChecker(this.config.cveCheck);
+        this.licenseChecker = new LicenseChecker(this.config.licenses);
+        this.packageAgeChecker = new PackageAgeChecker(this.config.packageAge);
 
         // Security rules configuration
         this.securityRules = {
-            blockedVersions: config.blockedVersions || [],
-            blockedPatterns: config.blockedPatterns || [],
-            minPackageSize: config.minPackageSize || 0,
-            maxPackageSize: config.maxPackageSize || 100 * 1024 * 1024, // 100MB
-            allowedScopes: config.allowedScopes || [],
-            blockedScopes: config.blockedScopes || [],
-            enforceChecksum: config.enforceChecksum !== false,
-            versionRangeRules: this._parseVersionRangeRules(config.versionRangeRules || [])
+            blockedVersions: this.config.blockedVersions || [],
+            blockedPatterns: this.config.blockedPatterns || [],
+            minPackageSize: this.config.minPackageSize || 0,
+            maxPackageSize: this.config.maxPackageSize || 100 * 1024 * 1024, // 100MB
+            allowedScopes: this.config.allowedScopes || [],
+            blockedScopes: this.config.blockedScopes || [],
+            enforceChecksum: this.config.enforceChecksum !== false,
+            versionRangeRules: this._parseVersionRangeRules(this.config.versionRangeRules || [])
         };
 
-        this.logger.info('[Security Filter] Plugin initialized');
-        this._logVersionRangeRules();
-    }
-
-    /**
-     * Filter package metadata before serving
-     */
-    public async filter_metadata(packageInfo: Package): Promise<Package> {
-        const packageName = packageInfo.name;
-
-        try {
-            // 1. Check blocked patterns
-            if (this._isBlockedByPattern(packageName)) {
-                this.logger.warn(`[Security Filter] Package blocked by pattern: ${packageName}`);
-                return this._createBlockedResponse(packageName, 'Package name matches blocked pattern');
-            }
-
-            // 2. Check scopes
-            if (!this._isScopeAllowed(packageName)) {
-                this.logger.warn(`[Security Filter] Package blocked by scope: ${packageName}`);
-                return this._createBlockedResponse(packageName, 'Package scope not allowed');
-            }
-
-            // 3. Filter versions (including range rules)
-            if (packageInfo.versions) {
-                const filterResult = this._filterVersions(packageInfo.versions, packageName);
-                packageInfo.versions = filterResult.versions;
-
-                // Update dist-tags if versions were modified
-                if (filterResult.fallbacksApplied.length > 0 && packageInfo['dist-tags']) {
-                    packageInfo['dist-tags'] = this._updateDistTags(
-                        packageInfo['dist-tags'],
-                        filterResult.versions
-                    );
-                }
-            }
-
-            // 4. Add security metadata
-            // Using strict types, we might need to cast or extend the Package type if _security is not standard
-            (packageInfo as any)._security = {
-                scanned: true,
-                scanDate: new Date().toISOString(),
-                filteredBy: 'verdaccio-security-filter',
-                blockedVersions: this._getBlockedVersionsList(packageName),
-                fallbackVersions: this._getFallbackVersionsList(packageName)
-            };
-
-            return packageInfo;
-        } catch (error) {
-            this.logger.error(`[Security Filter] Error filtering package ${packageName}: ${error}`);
-            throw error;
-        }
-    }
-
-    /**
-     * Validate package before publish
-     * @param {string} packageName - Package name
-     * @param {string} version - Version to publish
-     * @param {Buffer} [tarball] - Package tarball
-     * @returns {Promise<boolean>} True if validation passes
-     */
-    public async validate_publish(packageName: string, version: string, tarball?: Buffer): Promise<boolean> {
-        this.logger.info(`[Security Filter] Validating publish: ${packageName}@${version}`);
-
-        // 1. Check package size
-        if (tarball?.length) {
-            const size = tarball.length;
-            if (size < this.securityRules.minPackageSize) {
-                throw new Error(`Package size ${size} bytes is below minimum ${this.securityRules.minPackageSize} bytes`);
-            }
-            if (size > this.securityRules.maxPackageSize) {
-                throw new Error(`Package size ${size} bytes exceeds maximum ${this.securityRules.maxPackageSize} bytes`);
-            }
-        }
-
-        // 2. Check exact blocked versions
-        const versionKey = `${packageName}@${version}`;
-        if (this.securityRules.blockedVersions.includes(versionKey)) {
-            throw new Error(`Version ${versionKey} is blocked due to security concerns`);
-        }
-
-        // 3. Check version range rules
-        const rangeRule = this._getVersionRangeRule(packageName, version);
-        if (rangeRule) {
-            const message = rangeRule.reason
-                ? `Version ${version} is blocked by range rule: ${rangeRule.reason}`
-                : `Version ${version} falls within blocked range: ${rangeRule.range}`;
-            throw new Error(message);
-        }
-
-        // 4. Validate metadata
-        if (!this._validateMetadata(packageName)) {
-            throw new Error(`Package metadata validation failed for ${versionKey}`);
-        }
-
-        return true;
+        this._logInitialization();
     }
 
     /**
      * Parse and validate version range rules
      * @private
-     * @param {VersionRangeRule[]} rules - Raw version range rules from config
-     * @returns {VersionRangeRule[]} Validated rules
      */
     private _parseVersionRangeRules(rules: VersionRangeRule[]): VersionRangeRule[] {
         return rules.map((rule, index) => {
             if (!rule.package || !rule.range || !rule.strategy) {
-                this.logger.warn(`[Security Filter] Invalid version range rule at index ${index}, skipping`);
+                this.logger.warn(`Invalid version range rule at index ${index}, skipping`);
                 return null;
             }
 
             if (rule.strategy === 'fallback' && !rule.fallbackVersion) {
-                this.logger.warn(`[Security Filter] Fallback strategy requires fallbackVersion for ${rule.package}, skipping`);
+                this.logger.warn(`Fallback strategy requires fallbackVersion for ${rule.package}, skipping`);
                 return null;
             }
 
@@ -150,11 +86,11 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
             try {
                 const validRange = semver.validRange(rule.range);
                 if (!validRange) {
-                    this.logger.warn(`[Security Filter] Invalid semver range "${rule.range}" for ${rule.package}, skipping`);
+                    this.logger.warn(`Invalid semver range "${rule.range}" for ${rule.package}, skipping`);
                     return null;
                 }
             } catch (error: any) {
-                this.logger.warn(`[Security Filter] Error parsing range "${rule.range}" for ${rule.package}:`, error.message);
+                this.logger.warn(`Error parsing range "${rule.range}" for ${rule.package}: ${error.message}`);
                 return null;
             }
 
@@ -163,24 +99,54 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
     }
 
     /**
-     * Log configured version range rules
+     * Log initialization details
      * @private
      */
-    private _logVersionRangeRules(): void {
+    private _logInitialization(): void {
+        const features = this._getEnabledFeatures();
+        this.logger.logInit(features);
+
+        this.logger.debug(`[Init] Config mode: ${this.config.mode || 'not set'}`);
+        this.logger.debug(`[Init] Blocked versions: ${this.securityRules.blockedVersions.length}`);
+        this.logger.debug(`[Init] Blocked patterns: ${this.securityRules.blockedPatterns.length}`);
+
         if (this.securityRules.versionRangeRules.length > 0) {
-            this.logger.info('[Security Filter] Version range rules:');
+            this.logger.info('Version range rules configured:');
             this.securityRules.versionRangeRules.forEach(rule => {
                 const fallback = rule.strategy === 'fallback' ? ` -> ${rule.fallbackVersion}` : '';
-                this.logger.info(`  - ${rule.package} ${rule.range} [${rule.strategy}${fallback}]`);
+                this.logger.debug(`  ${rule.package} ${rule.range} [${rule.strategy}${fallback}]`);
             });
         }
+
+        if (this.config.mode === 'whitelist') {
+            const summary = this.whitelistChecker.getSummary();
+            this.logger.info(`Whitelist mode: ${summary.totalPackages} packages, ${summary.totalPatterns} patterns`);
+        }
+    }
+
+    /**
+     * Get list of enabled features
+     * @private
+     */
+    private _getEnabledFeatures(): string[] {
+        const features: string[] = [];
+
+        if (this.config.mode === 'whitelist') features.push('whitelist-mode');
+        if (this.config.metrics?.enabled) features.push('metrics');
+        if (this.config.cveCheck?.enabled) features.push('cve-checking');
+        if (this.config.licenses?.allowed && this.config.licenses.allowed.length > 0) features.push('license-filtering');
+        if (this.config.packageAge?.enabled) features.push('package-age-verification');
+        if (this.securityRules.versionRangeRules.length > 0) features.push('version-range-rules');
+        if (this.securityRules.blockedPatterns.length > 0) features.push('pattern-blocking');
+        if (this.securityRules.blockedVersions.length > 0) features.push('version-blocking');
+        if (this.securityRules.blockedScopes.length > 0) features.push('scope-blocking');
+
+        return features;
     }
 
     /**
      * Check if package name matches blocked patterns
      * @private
-     * @param {string} packageName - Package name to check
-     * @returns {boolean} True if blocked
      */
     private _isBlockedByPattern(packageName: string): boolean {
         return this.securityRules.blockedPatterns.some(pattern => {
@@ -192,8 +158,6 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
     /**
      * Check if package scope is allowed
      * @private
-     * @param {string} packageName - Package name to check
-     * @returns {boolean} True if allowed
      */
     private _isScopeAllowed(packageName: string): boolean {
         // If not a scoped package, check if allowedScopes is empty
@@ -219,9 +183,6 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
     /**
      * Get version range rule for a specific package and version
      * @private
-     * @param {string} packageName - Package name
-     * @param {string} version - Version to check
-     * @returns {VersionRangeRule|null} Matching rule or null
      */
     private _getVersionRangeRule(packageName: string, version: string): VersionRangeRule | null {
         return this.securityRules.versionRangeRules.find(rule => {
@@ -232,164 +193,396 @@ export default class SecurityFilterPlugin implements IPluginStorageFilter<Securi
             try {
                 return semver.satisfies(version, rule.range);
             } catch (error: any) {
-                this.logger.warn(`[Security Filter] Error checking version ${version} against range ${rule.range}:`, error.message);
+                this.logger.warn(`Error checking version ${version} against range ${rule.range}: ${error.message}`);
                 return false;
             }
         }) || null;
     }
 
     /**
-     * Filter versions based on all rules
-     * @private
-     * @param {Record<string, VersionData>} versions - Version data map
-     * @param {string} packageName - Package name
-     * @returns {FilterResult} Result object
+     * Register Express middleware to intercept package requests
+     * Intercepts both metadata and tarball requests
      */
-    private _filterVersions(versions: Record<string, VersionData>, packageName: string): FilterResult {
-        const filteredVersions: Record<string, VersionData> = {};
-        const blockedVersions: string[] = [];
-        const fallbacksApplied: Array<{ original: string; fallback: string }> = [];
+    public register_middlewares(app: Application, _auth: IBasicAuth<SecurityConfig>, _storage: IStorageManager<SecurityConfig>): void {
+        this.logger.info('[Middleware] Registering security filter middleware');
+        this.logger.info(`[Middleware] Config mode: ${this.config.mode || 'NOT SET'}`);
 
-        for (const [ version, versionData ] of Object.entries(versions)) {
-            const versionKey = `${packageName}@${version}`;
+        // Middleware to intercept all package requests
+        app.use(async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+            try {
+                // Extract package name and version from URL
+                // Tarball URLs: /:package/-/:filename.tgz
+                // Scoped tarball URLs: /@scope/:package/-/:filename.tgz
+                // Metadata URLs: /:package or /@scope/:package
+                const urlMatch = req.url.match(/^\/(@[^/]+\/)?([^/]+)(?:\/-\/([^/]+\.tgz))?/);
 
-            // Check exact blocked versions
-            if (this.securityRules.blockedVersions.includes(versionKey)) {
-                this.logger.warn(`[Security Filter] Filtering out blocked version: ${versionKey}`);
-                blockedVersions.push(version);
-                continue;
-            }
+                if (!urlMatch) {
+                    // Not a package-related request, pass through
+                    this.logger.debug(`[Middleware] Non-package request: ${req.method} ${req.url}`);
+                    return next();
+                }
 
-            // Check version range rules
-            const rangeRule = this._getVersionRangeRule(packageName, version);
+                const scope = urlMatch[1] || '';
+                const packageName = scope + urlMatch[2];
+                const tarballFile = urlMatch[3];
 
-            if (rangeRule) {
-                if (rangeRule.strategy === 'block') {
-                    // Block strategy: remove version
-                    this.logger.warn(`[Security Filter] Blocking ${versionKey} (range: ${rangeRule.range})`);
-                    blockedVersions.push(version);
-                    continue;
-                } else if (rangeRule.strategy === 'fallback' && rangeRule.fallbackVersion) {
-                    // Fallback strategy: redirect to safe version
-                    this.logger.info(`[Security Filter] Applying fallback for ${versionKey} -> ${rangeRule.fallbackVersion}`);
+                // Extract version from tarball filename if present
+                let version: string | undefined;
+                if (tarballFile) {
+                    // This is a tarball download request - block it immediately
+                    const versionMatch = tarballFile.match(/-([\d.]+(?:-[a-zA-Z0-9.]+)?)\.tgz$/);
+                    version = versionMatch ? versionMatch[1] : undefined;
 
-                    // Check if fallback version exists in original versions
-                    if (versions[rangeRule.fallbackVersion]) {
-                        filteredVersions[version] = {
-                            ...versions[rangeRule.fallbackVersion],
-                            version: version, // Keep original version number for compatibility
-                            _fallback: true,
-                            _fallbackFrom: rangeRule.fallbackVersion,
-                            _fallbackReason: rangeRule.reason || 'Version blocked by security rule'
-                        };
-                        fallbacksApplied.push({ original: version, fallback: rangeRule.fallbackVersion });
-                    } else {
-                        this.logger.warn(`[Security Filter] Fallback version ${rangeRule.fallbackVersion} not found for ${packageName}, blocking instead`);
-                        blockedVersions.push(version);
+                    this.logger.info(`[Middleware] TARBALL REQUEST: ${packageName}@${version || 'unknown'}`);
+
+                    // Apply all security checks for tarball downloads
+                    const blockResult = await this._checkPackageBlock(packageName, version);
+
+                    if (blockResult.blocked) {
+                        this.logger.warn(`[Middleware] [X] BLOCKED TARBALL: ${packageName}@${version || '*'} - ${blockResult.reason}`);
+                        this.metrics.recordBlock(packageName, version || '*', blockResult.reason);
+
+                        // Return 403 Forbidden with detailed error
+                        res.status(403).json({
+                            error: 'Package blocked by security filter',
+                            package: packageName,
+                            version: version || 'all versions',
+                            reason: blockResult.reason,
+                            timestamp: new Date().toISOString()
+                        });
+                        return;
                     }
-                    continue;
+
+                    this.logger.info(`[Middleware] [OK] ALLOWED TARBALL: ${packageName}@${version || 'unknown'}`);
+                } else {
+                    // This is a metadata request - intercept response and modify it
+                    this.logger.info(`[Middleware] METADATA REQUEST: ${packageName} - will intercept response`);
+
+                    // Check if package should be blocked
+                    const blockResult = await this._checkPackageBlock(packageName);
+
+                    if (blockResult.blocked) {
+                        // Intercept the response
+                        const originalSend = res.send;
+                        const originalJson = res.json;
+                        const self = this;
+
+                        // Override res.json to intercept JSON responses
+                        res.json = function(body: any): Response {
+                            if (body && typeof body === 'object' && body.name === packageName) {
+                                // This is package metadata - modify it to show blocked info
+                                self.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
+                                self.logger.info(`[Middleware] Modifying response to show blocking info`);
+
+                                const blockedResponse = {
+                                    name: packageName,
+                                    versions: {},
+                                    'dist-tags': {},
+                                    security: {
+                                        blocked: true,
+                                        reason: blockResult.reason,
+                                        plugin: {
+                                            name: 'verdaccio-security-filter',
+                                            version: '1.0.0',
+                                            mode: self.config.mode || 'blacklist',
+                                        },
+                                        blockedAt: new Date().toISOString(),
+                                        rules: self._getAppliedRules(packageName),
+                                        message: `This package has been blocked by security filter: ${blockResult.reason}`,
+                                        contact: 'Please contact your registry administrator for more information',
+                                    },
+                                    _security: {
+                                        blocked: true,
+                                        reason: blockResult.reason,
+                                        blockedBy: 'verdaccio-security-filter',
+                                        blockedAt: new Date().toISOString(),
+                                    }
+                                };
+
+                                return originalJson.call(this, blockedResponse);
+                            }
+                            return originalJson.call(this, body);
+                        };
+
+                        // Override res.send for non-JSON responses
+                        res.send = function(body: any): Response {
+                            if (typeof body === 'string') {
+                                try {
+                                    const parsed = JSON.parse(body);
+                                    if (parsed && parsed.name === packageName) {
+                                        self.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
+
+                                        const blockedResponse = {
+                                            name: packageName,
+                                            versions: {},
+                                            'dist-tags': {},
+                                            security: {
+                                                blocked: true,
+                                                reason: blockResult.reason,
+                                                plugin: {
+                                                    name: 'verdaccio-security-filter',
+                                                    version: '1.0.0',
+                                                    mode: self.config.mode || 'blacklist',
+                                                },
+                                                blockedAt: new Date().toISOString(),
+                                                rules: self._getAppliedRules(packageName),
+                                                message: `This package has been blocked by security filter: ${blockResult.reason}`,
+                                                contact: 'Please contact your registry administrator for more information',
+                                            }
+                                        };
+
+                                        return originalSend.call(this, JSON.stringify(blockedResponse));
+                                    }
+                                } catch (e) {
+                                    // Not JSON, pass through
+                                }
+                            }
+                            return originalSend.call(this, body);
+                        };
+                    } else {
+                        this.logger.info(`[Middleware] [OK] ALLOWED METADATA: ${packageName}`);
+                    }
+                }
+
+                // Continue to next middleware
+                next();
+            } catch (error: any) {
+                this.logger.error(`[Middleware] Error processing request: ${error.message}`);
+                next(error);
+            }
+        });
+
+        this.logger.info('[Middleware] Security filter middleware registered successfully');
+    }
+
+    /**
+     * Filter package metadata before returning to client
+     * This provides CVE, License, and Age checking when metadata is available
+     */
+    public async filter_metadata(packageInfo: Package): Promise<Package> {
+        const packageName = packageInfo.name;
+        this.logger.info(`[filter_metadata] --> Processing: ${packageName}`);
+
+        try {
+            // 1. Whitelist/blacklist check (basic filtering)
+            const blockResult = await this._checkPackageBlock(packageName);
+            if (blockResult.blocked) {
+                this.logger.warn(`[filter_metadata] BLOCKED: ${packageName}@* - ${blockResult.reason}`);
+                this.metrics.recordBlock(packageName, '*', blockResult.reason);
+
+                // Return empty versions with security field
+                return {
+                    ...packageInfo,
+                    versions: {},
+                    'dist-tags': {},
+                    security: {
+                        blocked: true,
+                        reason: blockResult.reason,
+                        plugin: {
+                            name: 'verdaccio-security-filter',
+                            version: '2.0.0',
+                            mode: this.config.mode || 'blacklist',
+                        },
+                        blockedAt: new Date().toISOString(),
+                        rules: this._getAppliedRules(packageName),
+                    }
+                } as Package;
+            }
+
+            // 2. CVE Check - check all versions
+            if (this.config.cveCheck?.enabled) {
+                const versions = Object.keys(packageInfo.versions || {});
+                const vulnerableVersions: string[] = [];
+
+                for (const version of versions) {
+                    const cveResult = await this.cveChecker.checkPackage(packageName, version);
+                    if (cveResult.isVulnerable) {
+                        vulnerableVersions.push(version);
+                        this.logger.warn(`[filter_metadata] CVE found in ${packageName}@${version}: ${cveResult.vulnerabilities.length} vulnerabilities`);
+                    }
+                }
+
+                // If configured to auto-block and vulnerabilities found
+                if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
+                    const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
+                    this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
+                    this.metrics.recordBlock(packageName, '*', reason);
+
+                    return {
+                        ...packageInfo,
+                        versions: {},
+                        'dist-tags': {},
+                        security: {
+                            blocked: true,
+                            reason,
+                            vulnerableVersions,
+                            plugin: {
+                                name: 'verdaccio-security-filter',
+                                version: '2.0.0',
+                            },
+                            blockedAt: new Date().toISOString(),
+                        }
+                    } as Package;
                 }
             }
 
-            // Version passed all checks
-            filteredVersions[version] = versionData;
-        }
+            // 3. License Check - check latest version
+            if (this.config.licenses && this.config.licenses.allowed && this.config.licenses.allowed.length > 0) {
+                const latestVersion = packageInfo['dist-tags']?.latest;
+                if (latestVersion && packageInfo.versions?.[latestVersion]) {
+                    const versionData = packageInfo.versions[latestVersion];
+                    const licenseResult = this.licenseChecker.checkLicense(versionData);
 
-        return { versions: filteredVersions, blockedVersions, fallbacksApplied };
+                    if (!licenseResult.allowed) {
+                        this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${licenseResult.reason}`);
+                        this.metrics.recordBlock(packageName, '*', licenseResult.reason || 'License not allowed');
+
+                        return {
+                            ...packageInfo,
+                            versions: {},
+                            'dist-tags': {},
+                            security: {
+                                blocked: true,
+                                reason: licenseResult.reason || 'License not allowed',
+                                license: licenseResult.license,
+                                plugin: {
+                                    name: 'verdaccio-security-filter',
+                                    version: '2.0.0',
+                                },
+                                blockedAt: new Date().toISOString(),
+                            }
+                        } as Package;
+                    }
+                }
+            }
+
+            // 4. Package Age Check
+            if (this.config.packageAge?.enabled) {
+                const ageResult = this.packageAgeChecker.checkPackageAge(packageInfo);
+                if (!ageResult.allowed && !ageResult.warnOnly) {
+                    this.logger.warn(`[filter_metadata] AGE BLOCKED: ${packageName} - ${ageResult.reason}`);
+                    this.metrics.recordBlock(packageName, '*', ageResult.reason || 'Package too new');
+
+                    return {
+                        ...packageInfo,
+                        versions: {},
+                        'dist-tags': {},
+                        security: {
+                            blocked: true,
+                            reason: ageResult.reason || 'Package too new',
+                            ageDays: ageResult.ageDays,
+                            plugin: {
+                                name: 'verdaccio-security-filter',
+                                version: '2.0.0',
+                            },
+                            blockedAt: new Date().toISOString(),
+                        }
+                    } as Package;
+                } else if (!ageResult.allowed && ageResult.warnOnly) {
+                    this.logger.warn(`[filter_metadata] AGE WARNING: ${packageName} - ${ageResult.reason} (warn-only mode)`);
+                }
+            }
+
+            this.logger.info(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
+            return packageInfo;
+
+        } catch (error: any) {
+            this.logger.error(`[filter_metadata] Error processing ${packageName}: ${error.message}`);
+            // On error, allow package through but log the issue
+            return packageInfo;
+        }
     }
 
     /**
-     * Update dist-tags to point to valid versions
+     * Check if package should be blocked (used by middleware)
      * @private
-     * @param {Record<string, string>} distTags - Distribution tags
-     * @param {Record<string, VersionData>} availableVersions - Available versions
-     * @returns {Record<string, string>} Updated dist-tags
      */
-    private _updateDistTags(distTags: Record<string, string>, availableVersions: Record<string, VersionData>): Record<string, string> {
-        const updatedTags: Record<string, string> = {};
-
-        for (const [ tag, version ] of Object.entries(distTags)) {
-            if (availableVersions[version]) {
-                updatedTags[tag] = version;
-            } else {
-                // Find latest available version as fallback for tags
-                const availableVersionsList = Object.keys(availableVersions).sort(semver.rcompare);
-                if (availableVersionsList.length > 0) {
-                    updatedTags[tag] = availableVersionsList[0];
-                    this.logger.info(`[Security Filter] Updated dist-tag "${tag}" from ${version} to ${availableVersionsList[0]}`);
-                }
+    private async _checkPackageBlock(packageName: string, version?: string): Promise<{ blocked: boolean; reason: string }> {
+        // 1. Whitelist mode
+        if (this.config.mode === 'whitelist') {
+            const whitelistCheck = this.whitelistChecker.isWhitelisted(packageName, version);
+            if (!whitelistCheck.allowed) {
+                return { blocked: true, reason: whitelistCheck.reason || 'Package is not in whitelist' };
             }
         }
 
-        return updatedTags;
-    }
-
-    /**
-     * Get list of blocked versions for a package
-     * @private
-     * @param {string} packageName - Package name
-     * @returns {string[]} List of blocked version ranges
-     */
-    private _getBlockedVersionsList(packageName: string): string[] {
-        return this.securityRules.versionRangeRules
-            .filter(rule => rule.package === packageName && rule.strategy === 'block')
-            .map(rule => rule.range);
-    }
-
-    /**
-     * Get list of fallback version mappings for a package
-     * @private
-     * @param {string} packageName - Package name
-     * @returns {string[]} List of fallback descriptions
-     */
-    private _getFallbackVersionsList(packageName: string): string[] {
-        return this.securityRules.versionRangeRules
-            .filter(rule => rule.package === packageName && rule.strategy === 'fallback')
-            .map(rule => `${rule.range} -> ${rule.fallbackVersion}`);
-    }
-
-    /**
-     * Validate package metadata
-     * @private
-     * @param {string} packageName - Package name
-     * @param {string} version - Package version
-     * @returns {boolean} True if valid
-     */
-    private _validateMetadata(packageName: string): boolean {
-        // Basic package name validation
-        if (!packageName || packageName.length === 0) {
-            return false;
+        // 2. Blocked patterns
+        if (this._isBlockedByPattern(packageName)) {
+            return { blocked: true, reason: 'Package name matches blocked pattern' };
         }
 
-        // Check for dangerous characters
-        const dangerousChars = /[<>:"\/\\|?*\x00-\x1f]/;
-        if (dangerousChars.test(packageName)) {
-            this.logger.warn(`[Security Filter] Dangerous characters in package name: ${packageName}`);
-            return false;
+        // 3. Scopes
+        if (!this._isScopeAllowed(packageName)) {
+            return { blocked: true, reason: 'Package scope not allowed' };
         }
 
-        return true;
+        // 4. Exact version blocking
+        if (version) {
+            const versionKey = `${packageName}@${version}`;
+            if (this.securityRules.blockedVersions.includes(versionKey)) {
+                return { blocked: true, reason: 'Exact version match in blocklist' };
+            }
+
+            // 5. Version range rules
+            const rangeRule = this._getVersionRangeRule(packageName, version);
+            if (rangeRule && rangeRule.strategy === 'block') {
+                return { blocked: true, reason: `Version matches blocked range: ${rangeRule.range}` };
+            }
+        }
+
+        return { blocked: false, reason: '' };
     }
 
     /**
-     * Create a blocked package response
+     * Get applied security rules for a package
      * @private
-     * @param {string} packageName - Package name
-     * @param {string} reason - Reason for blocking
-     * @returns {Package} Blocked package metadata
      */
-    private _createBlockedResponse(packageName: string, reason: string): Package {
-        return {
-            name: packageName,
-            versions: {},
-            'dist-tags': {},
-            _blocked: true,
-            _blockReason: reason,
-            time: {},
-            _id: packageName,
-            readme: '',
-            _rev: '',
-            _attachments: {}
-        } as Package & { _blocked: boolean; _blockReason: string };
+    private _getAppliedRules(packageName: string): Record<string, any> {
+        const rules: Record<string, any> = {};
+
+        // Check which rules apply to this package
+        if (this.config.mode === 'whitelist') {
+            rules.mode = 'whitelist';
+            rules.whitelisted = false;
+        }
+
+        if (this._isBlockedByPattern(packageName)) {
+            rules.blockedPattern = this.securityRules.blockedPatterns.find(pattern => {
+                const regex = new RegExp(pattern);
+                return regex.test(packageName);
+            });
+        }
+
+        if (packageName.startsWith('@')) {
+            const scope = packageName.split('/')[0];
+            if (this.securityRules.blockedScopes.includes(scope)) {
+                rules.blockedScope = scope;
+            }
+            if (this.securityRules.allowedScopes.length > 0 && !this.securityRules.allowedScopes.includes(scope)) {
+                rules.scopeNotInAllowedList = scope;
+                rules.allowedScopes = this.securityRules.allowedScopes;
+            }
+        }
+
+        const versionRules = this.securityRules.versionRangeRules.filter(rule => rule.package === packageName);
+        if (versionRules.length > 0) {
+            rules.versionRangeRules = versionRules.map(rule => ({
+                range: rule.range,
+                strategy: rule.strategy,
+                reason: rule.reason,
+            }));
+        }
+
+        return rules;
     }
 }
+
+// Export utility classes for testing
+export { SecurityLogger } from './lib/logger';
+export { MetricsCollector } from './lib/metrics';
+export { WhitelistChecker } from './lib/whitelist-checker';
+export { CVEChecker } from './lib/cve-checker';
+export { LicenseChecker } from './lib/license-checker';
+export { PackageAgeChecker } from './lib/package-age-checker';
+
+export * from './types';

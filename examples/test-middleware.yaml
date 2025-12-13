@@ -1,0 +1,53 @@
+# Test Configuration - Demonstrates middleware blocking
+# This is a minimal config to test that middleware blocks package installation
+
+# Layer 1: Metadata filtering
+filters:
+  security-filter:
+    enabled: true
+
+    # Use whitelist mode - only specific packages allowed
+    mode: whitelist
+
+    whitelist:
+      packages:
+        - lodash    # Allow lodash
+        - express   # Allow express
+      patterns:
+        - "^@types/.*"  # Allow all @types packages
+
+    # Enhanced logging to see what's happening
+    logger:
+      level: debug      # Show all debug messages
+      enabled: true
+      includeTimestamp: true
+
+# Layer 2: Middleware interception (THIS IS CRITICAL!)
+# Without this, tarball downloads won't be blocked
+middlewares:
+  security-filter:
+    enabled: true
+
+# Basic Verdaccio configuration
+storage: ./storage
+auth:
+  htpasswd:
+    file: ./htpasswd
+
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+packages:
+  '@*/*':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+
+  '**':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+
+logs:
+  - { type: stdout, format: pretty, level: debug }

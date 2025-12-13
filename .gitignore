@@ -3,8 +3,8 @@ node_modules/
 
 # Environment
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Logs
 logs/
@@ -18,6 +18,12 @@ lerna-debug.log*
 # Testing
 coverage/
 .nyc_output/
+*.lcov
+
+# Security cache
+.security-cache/
+security-metrics.json
+security-metrics.jsonl
 
 # IDE
 .vscode/*
@@ -29,11 +35,13 @@ coverage/
 *.swo
 *~
 .DS_Store
+*.sublime-*
 
 # Build
 dist/
 build/
 .cache/
+*.tsbuildinfo
 
 # PM2
 .pm2/
@@ -44,6 +52,15 @@ pids/
 # Docker
 docker-compose.override.yml
 
-# Misc
+# Verdaccio storage (for testing)
+storage/
+htpasswd
+
+# Temporary files
 .temp/
 tmp/
+*.tmp
+
+# OS
+Thumbs.db
+Desktop.ini

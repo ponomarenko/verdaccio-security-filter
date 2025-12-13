@@ -1,0 +1,32 @@
+# Basic Configuration Example
+# Simple setup for individual developers or small teams
+
+# Layer 1: Metadata filtering
+filters:
+  security-filter:
+    enabled: true
+
+    # Block specific vulnerable versions
+    blockedVersions:
+      - "lodash@4.17.20"  # CVE-2021-23337
+      - "minimist@1.2.5"  # CVE-2021-44906
+
+    # Block packages with suspicious names
+    blockedPatterns:
+      - "^evil-.*"
+      - ".*-backdoor$"
+
+    # Size limits to prevent accidentally installing huge packages
+    minPackageSize: 100           # 100 bytes minimum
+    maxPackageSize: 52428800      # 50MB maximum
+
+    # Simple logging
+    logger:
+      level: info
+      enabled: true
+      includeTimestamp: false
+
+# Layer 2: Middleware interception
+middlewares:
+  security-filter:
+    enabled: true

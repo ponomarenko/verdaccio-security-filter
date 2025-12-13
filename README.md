@@ -1,49 +1,113 @@
 # Verdaccio Security Filter Plugin
 
-Advanced security filter plugin for Verdaccio with version range blocking and intelligent fallback strategies.
+Advanced security filter plugin for Verdaccio with **dual-layer protection architecture** combining middleware interception and metadata filtering for comprehensive package security.
 
-## Features
+[![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)](./tests)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)]()
+[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)]()
+[![Verdaccio](https://img.shields.io/badge/Verdaccio-6.x%20%7C%207.x-orange)]()
 
-### 🔒 Core Security Features
+## 🏗️ Dual-Layer Architecture
 
-1. **Version Range Blocking** - Block vulnerable versions using semver ranges with two strategies:
-   - **Block Strategy**: Completely remove versions from registry
-   - **Fallback Strategy**: Transparently redirect to safe versions
-2. **Exact Version Blocking** - Block specific vulnerable package versions
-3. **Pattern-based Filtering** - Block suspicious packages by name patterns
-4. **Scope Control** - Whitelist/blacklist package scopes (@scope/package)
-5. **Size Limits** - Enforce minimum and maximum package sizes
-6. **Metadata Validation** - Verify package integrity and structure
-7. **Checksum Enforcement** - Ensure package integrity
+This plugin implements **two independent security layers** for complete protection:
 
-### 🆕 Version Range Strategies
+### Layer 1: Middleware (Always Active)
+- ✅ **Whitelist/Blacklist filtering** - Control allowed packages
+- ✅ **Pattern-based blocking** - Block by regex patterns
+- ✅ **Scope control** - Filter by npm scopes
+- ✅ **Tarball interception** - Block downloads even if metadata cached
+- ✅ **Version blocking** - Block specific versions/ranges
 
-#### Block Strategy
+### Layer 2: Filter Metadata (Deep Inspection)
+- ✅ **CVE vulnerability scanning** - OSV API integration
+- ✅ **License compliance** - SPDX validation
+- ✅ **Package age verification** - Block newly created packages
+- ✅ **Full metadata access** - Deep package inspection
 
-Completely removes versions from the registry. Users cannot install these versions.
+> **Why two layers?** Middleware catches everything at HTTP level, while filter_metadata provides deep inspection when metadata is available. See [DUAL-LAYER-ARCHITECTURE.md](./DUAL-LAYER-ARCHITECTURE.md) for details.
 
-```yaml
-- package: "axios"
-  range: ">=0.21.0 <=0.21.1"
-  strategy: "block"
-  reason: "Critical SSRF vulnerability (CVE-2021-3749)"
-```
+## 🚀 Features
 
-#### Fallback Strategy
+### ✅ Implemented Features
 
-Transparently redirects blocked versions to a safe version. Users can still install using the blocked version number, but receive the fallback version.
+#### 🔒 Version Management
+- **Version Range Blocking** - Block vulnerable versions using semver ranges
+  - **Block Strategy**: Completely remove versions from registry
+  - **Fallback Strategy**: Transparently redirect to safe versions
+- **Exact Version Blocking** - Block specific package@version combinations
+- **Semver Support** - Full semver syntax (`^`, `~`, `>`, `>=`, `<`, `<=`, `x`, `*`)
 
-```yaml
-- package: "lodash"
-  range: ">=4.17.0 <4.17.21"
-  strategy: "fallback"
-  fallbackVersion: "4.17.21"
-  reason: "Contains prototype pollution vulnerability"
-```
+#### 🛡️ CVE & Vulnerability Scanning
+- **OSV Database Integration** - Automatic vulnerability scanning via [OSV API](https://osv.dev/)
+- **Severity Filtering** - Filter by severity: `low`, `medium`, `high`, `critical`
+- **Auto-Block Vulnerable Packages** - Automatically block packages with known CVEs
+- **Caching System** - Configurable cache with update intervals
+- **Multiple Database Support** - Ready for OSV, Snyk, GitHub Advisory
 
-## Installation
+#### ⚖️ License Compliance
+- **License Filtering** - Enforce license policies with allowed/blocked lists
+- **SPDX Expression Support** - Parse complex license expressions (OR/AND operators)
+- **Require License** - Option to block packages without license information
+- **Pre-defined Lists** - Common open-source and copyleft license collections
+
+#### 🔐 Access Control
+- **Whitelist Mode** - Only explicitly approved packages allowed
+- **Pattern-based Whitelisting** - Regex patterns for package approval
+- **Version Constraints** - Lock approved packages to specific version ranges
+- **Scope Control** - Whitelist/blacklist package scopes (@scope/package)
+
+#### 📊 Monitoring & Observability
+- **Enhanced Logging** - Configurable log levels (`debug`, `info`, `warn`, `error`)
+- **Metrics Collection** - Track security events (blocks, fallbacks, CVEs, license violations)
+- **Security Audit Trail** - Detailed logging of all security decisions
+- **Customizable Output** - Log to stdout or file in JSON format
+
+#### 🔍 Additional Security
+- **Pattern-based Blocking** - Block suspicious packages by name patterns (regex)
+- **Package Age Filtering** - Block packages or versions that are too new (protect against newly published malicious packages)
+  - **Minimum Package Age** - Require packages to exist for a minimum number of days
+  - **Minimum Version Age** - Require specific versions to exist for a minimum number of days
+  - **Warn-Only Mode** - Log warnings without blocking
+- **Middleware Interception** - HTTP middleware that blocks tarball downloads for blocked packages
+  - Prevents blocked packages from being installed as dependencies
+  - Intercepts requests to `/:package/-/:filename.tgz` routes
+  - Returns 403 Forbidden with detailed error messages
+- **Size Limits** - Enforce minimum and maximum package sizes
+- **Metadata Validation** - Verify package integrity and detect dangerous characters
+- **Checksum Enforcement** - Ensure package integrity
+
+### 🔮 Planned Features (Roadmap)
+
+#### Phase 3: Advanced Security
+- [ ] **Dependency Depth Limiting** - Limit dependency tree depth and total count
+- [ ] **Circular Dependency Detection** - Block packages with circular dependencies
+- [ ] **Rate Limiting** - Detect and block suspicious download patterns
+- [ ] **Typosquatting Detection** - AI-powered detection of similar package names
+- [ ] **Package Signing Verification** - PGP signature validation
+- [ ] **Custom Validation Scripts** - Execute custom security checks
+
+#### Phase 4: Enterprise Features
+- [ ] **Integration with Security Scanners** - npm audit, Snyk API, Sonatype
+- [ ] **Webhook Notifications** - Real-time alerts for security events
+- [ ] **Web Dashboard** - Visual interface for security analytics
+- [ ] **Email/Slack Notifications** - Alert channels for critical events
+- [ ] **Audit Reports** - Generate compliance reports (PDF, CSV, JSON)
+- [ ] **Multi-Registry Support** - Fallback to other registries
+- [ ] **ML-based Anomaly Detection** - Machine learning for threat detection
+
+#### Phase 5: Developer Experience
+- [ ] **Dry Run Mode** - Test rules without actually blocking
+- [ ] **Auto-approve Criteria** - Automatic approval based on npm stats (downloads, stars)
+- [ ] **CLI Tool** - Command-line interface for rule management
+- [ ] **Visual Studio Code Extension** - IDE integration
+- [ ] **GitHub Action** - CI/CD integration
+
+## 📦 Installation
 
 ### Prerequisites
+
+- Node.js >= 22.0.0
+- Verdaccio >= 5.0.0
 
 ```bash
 npm install -g verdaccio
@@ -55,417 +119,554 @@ npm install -g verdaccio
 # Install from npm (when published)
 npm install -g verdaccio-security-filter
 
-# Or install locally
+# Or install locally for development
+git clone https://github.com/ponomarenko/verdaccio-security-filter.git
 cd verdaccio-security-filter
 npm install
+npm run build
 npm link
 ```
 
-### Install Dependencies
+## 🔧 How It Works
 
-```bash
-npm install semver
+This plugin implements **two layers of protection** to block malicious packages:
+
+### Layer 1: Metadata Filtering (`filter_metadata`)
+When a client requests package information (e.g., `npm info lodash`), the plugin:
+1. Checks if the package is allowed (whitelist mode)
+2. Validates against blocked patterns, scopes, and age requirements
+3. **Throws HTTP 404 error** for completely blocked packages (patterns, scopes, whitelist violations)
+4. Filters out specific blocked versions from the versions list for partial blocks
+
+**Result**: Blocked packages return "404 Not Found" - as if they don't exist in the registry.
+
+### Layer 2: Middleware Interception (`register_middlewares`)
+When a client tries to download a tarball file (e.g., during `npm install`), the plugin:
+1. Intercepts **all HTTP requests** early in the middleware chain
+2. Extracts package name and version from the request URL
+3. Applies all security checks (whitelist, patterns, scopes, blocked versions, range rules)
+4. Returns **403 Forbidden** for blocked packages with detailed error message
+
+**Result**: Even if metadata is cached, tarball downloads are blocked at the HTTP level.
+
+### Why Both Layers?
+
+- **Metadata filtering (404)** - Makes blocked packages invisible to npm/yarn
+- **Middleware interception (403)** - Blocks tarball downloads even with cached metadata
+- Together, they provide **complete protection** against blocked packages being installed in any way
+
+Example flow when a blocked package is requested:
+```
+npm install hawk
+→ GET /hawk (metadata request)
+→ [Security Filter] Blocked hawk@* - Package is not in whitelist
+→ HTTP 404 Not Found: Package blocked by security filter: Not in whitelist
+→ npm ERR! 404 Not Found - GET http://localhost:4873/hawk
+
+npm install (with hawk as dependency)
+→ GET /hawk/-/hawk-9.0.1.tgz (tarball request)
+→ [Middleware] Tarball request: hawk/hawk-9.0.1.tgz
+→ [Security Filter] Blocked hawk@9.0.1 - Package is not in whitelist
+→ HTTP 403 Forbidden: {"error": "Package blocked by security filter", "reason": "Package is not in whitelist"}
 ```
 
-## Configuration
+## ⚙️ Configuration
 
-Add to your `config.yaml`:
+### Quick Start (Middleware Only)
+
+Minimal configuration using only Layer 1 (Middleware):
 
 ```yaml
+middlewares:
+  security-filter:
+    enabled: true
+    mode: whitelist
+    whitelist:
+      packages:
+        - lodash
+        - express
+      patterns:
+        - "^@types/.*"
+```
+
+### Full Protection (Dual-Layer)
+
+**Recommended:** Use both layers for maximum security:
+
+```yaml
+# Enable filter_metadata (Layer 2)
+packages:
+  '@*/*':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+    storage: security-filter  # Enable Layer 2!
+
+  '**':
+    access: $all
+    publish: $authenticated
+    proxy: npmjs
+    storage: security-filter  # Enable Layer 2!
+
+# Configure security filter
+middlewares:
+  security-filter:
+    enabled: true
+
+    # Layer 1: Basic filtering (Middleware)
+    mode: whitelist
+    whitelist:
+      packages: [lodash, express]
+      patterns: ["^@types/.*"]
+
+    blockedVersions:
+      - "lodash@4.17.20"
+
+    # Layer 2: Deep inspection (filter_metadata)
+    cveCheck:
+      enabled: true
+      autoBlock: true
+      severity: [critical, high]
+
+    licenses:
+      allowed: [MIT, Apache-2.0, BSD-3-Clause]
+
+    packageAge:
+      enabled: true
+      minPackageAgeDays: 7
+```
+
+### Advanced Configuration with CVE Scanning
+
+```yaml
+# Layer 1: Metadata filtering
 filters:
   security-filter:
-    # Exact version blocking
-    blockedVersions:
-      - "lodash@4.17.15"
-      - "moment@2.29.1"
+    enabled: true
 
-    # Pattern-based blocking
-    blockedPatterns:
-      - "^evil-.*"
-      - ".*-malware$"
+    # CVE vulnerability scanning
+    cveCheck:
+      enabled: true
+      databases:
+        - osv
+        - github
+      severity:
+        - high
+        - critical
+      autoBlock: true
+      updateInterval: 24          # hours
+      cacheDir: ./.security-cache
 
-    # Scope control
-    allowedScopes:
-      - "@mycompany"
+    # License compliance
+    licenses:
+      allowed:
+        - MIT
+        - Apache-2.0
+        - BSD-3-Clause
+      blocked:
+        - GPL-3.0
+        - AGPL-3.0
+      requireLicense: true
 
-    blockedScopes:
-      - "@malicious"
-
-    # Size limits (bytes)
-    minPackageSize: 100
-    maxPackageSize: 52428800 # 50MB
+    # Package age filtering
+    packageAge:
+      enabled: true
+      minPackageAgeDays: 7       # Packages must be at least 7 days old
+      minVersionAgeDays: 3       # Versions must be at least 3 days old
+      warnOnly: false            # Block instead of just warning
 
     # Version range rules
     versionRangeRules:
-      # Fallback example
-      - package: "lodash"
-        range: ">=4.17.0 <4.17.21"
-        strategy: "fallback"
+      - package: lodash
+        range: "<4.17.21"
+        strategy: fallback
         fallbackVersion: "4.17.21"
-        reason: "Prototype pollution vulnerability"
+        reason: "CVE-2021-23337: Command injection"
 
-      # Block example
-      - package: "axios"
-        range: ">=0.21.0 <=0.21.1"
-        strategy: "block"
-        reason: "SSRF vulnerability (CVE-2021-3749)"
+      - package: minimist
+        range: "<1.2.6"
+        strategy: block
+        reason: "CVE-2021-44906: Prototype pollution"
+
+# Layer 2: Middleware interception
+middlewares:
+  security-filter:
+    enabled: true
 ```
 
-## Usage Examples
-
-### Example 1: Block Vulnerable Lodash Versions
+### Enterprise Whitelist Mode
 
 ```yaml
-versionRangeRules:
-  - package: "lodash"
-    range: ">=4.17.0 <4.17.21"
-    strategy: "fallback"
-    fallbackVersion: "4.17.21"
-    reason: "CVE-2020-28500: Prototype pollution"
+# Layer 1: Metadata filtering
+filters:
+  security-filter:
+    enabled: true
+
+    # Only approved packages allowed
+    mode: whitelist
+
+    whitelist:
+      packages:
+        - lodash
+        - express
+        - react
+      patterns:
+        - "^@mycompany/.*"
+        - "^@types/.*"
+      versions:
+        lodash: "^4.17.21"
+        express: "^4.18.0"
+
+    # Enhanced logging
+    logger:
+      level: info
+      enabled: true
+      includeTimestamp: true
+
+    # Metrics for analytics
+    metrics:
+      enabled: true
+      output: file
+      filePath: ./security-metrics.json
+
+# Layer 2: Middleware interception
+middlewares:
+  security-filter:
+    enabled: true
 ```
 
-**Result:**
-
-- User runs: `npm install lodash@4.17.15`
-- Actually receives: `lodash@4.17.21`
-- Application continues to work without breaking changes
-
-### Example 2: Hard Block Deprecated Package
+### High Security Configuration
 
 ```yaml
-versionRangeRules:
-  - package: "request"
-    range: "*"
-    strategy: "block"
-    reason: "Package deprecated, use axios instead"
+# Layer 1: Metadata filtering
+filters:
+  security-filter:
+    enabled: true
+    mode: whitelist
+
+    whitelist:
+      packages:
+        - lodash
+        - axios
+      versions:
+        lodash: "4.17.21"    # Lock to exact version
+        axios: "1.6.0"
+
+    cveCheck:
+      enabled: true
+      databases: [osv, github, snyk]
+      severity: [low, medium, high, critical]  # Block ALL
+      autoBlock: true
+      updateInterval: 6                         # Check every 6 hours
+
+    licenses:
+      allowed: [MIT, Apache-2.0, BSD-3-Clause]
+      blocked: [GPL-3.0, AGPL-3.0, LGPL-3.0]
+      requireLicense: true
+
+    minPackageSize: 10000      # 10KB minimum
+    maxPackageSize: 10485760   # 10MB maximum
+
+    logger:
+      level: debug             # Log everything
+      enabled: true
+      includeTimestamp: true
+
+    metrics:
+      enabled: true
+      output: file
+      filePath: /var/log/verdaccio/security-metrics.jsonl
+
+# Layer 2: Middleware interception
+middlewares:
+  security-filter:
+    enabled: true
 ```
 
-**Result:**
+## 📚 Configuration Reference
 
-- User runs: `npm install request`
-- Installation fails with error message
-- Forces migration to modern alternatives
+### Main Options
 
-### Example 3: Force Latest Stable Version
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `mode` | `string` | `blacklist` | Filter mode: `blacklist` or `whitelist` |
+| `blockedVersions` | `string[]` | `[]` | List of `package@version` to block |
+| `blockedPatterns` | `string[]` | `[]` | Regex patterns for package names |
+| `allowedScopes` | `string[]` | `[]` | Allowed package scopes |
+| `blockedScopes` | `string[]` | `[]` | Blocked package scopes |
+| `minPackageSize` | `number` | `0` | Minimum package size in bytes |
+| `maxPackageSize` | `number` | `104857600` | Maximum package size (100MB) |
+| `enforceChecksum` | `boolean` | `true` | Enforce checksum validation |
 
-```yaml
-versionRangeRules:
-  - package: "@mycompany/core"
-    range: ">=2.0.0 <2.5.0"
-    strategy: "fallback"
-    fallbackVersion: "2.5.3"
-    reason: "Company policy: use latest 2.x version"
+### CVE Check Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `cveCheck.enabled` | `boolean` | `false` | Enable CVE scanning |
+| `cveCheck.databases` | `string[]` | `['osv']` | Databases: `osv`, `snyk`, `github` |
+| `cveCheck.severity` | `string[]` | `['high', 'critical']` | Severity levels to check |
+| `cveCheck.autoBlock` | `boolean` | `false` | Auto-block vulnerable packages |
+| `cveCheck.updateInterval` | `number` | `24` | Cache update interval (hours) |
+| `cveCheck.cacheDir` | `string` | `./.security-cache` | Cache directory path |
+
+### License Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `licenses.allowed` | `string[]` | `[]` | Allowed license list |
+| `licenses.blocked` | `string[]` | `[]` | Blocked license list |
+| `licenses.requireLicense` | `boolean` | `false` | Require license field |
+
+### Whitelist Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `whitelist.packages` | `string[]` | `[]` | Approved package names |
+| `whitelist.patterns` | `string[]` | `[]` | Regex patterns for approval |
+| `whitelist.versions` | `object` | `{}` | Version constraints per package |
+
+### Logger Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `logger.level` | `string` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `logger.enabled` | `boolean` | `true` | Enable logging |
+| `logger.includeTimestamp` | `boolean` | `false` | Include timestamps in logs |
+
+### Metrics Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `metrics.enabled` | `boolean` | `false` | Enable metrics collection |
+| `metrics.output` | `string` | `stdout` | Output: `stdout` or `file` |
+| `metrics.filePath` | `string` | `./security-metrics.json` | Metrics file path |
+
+### Package Age Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `packageAge.enabled` | `boolean` | `false` | Enable package age filtering |
+| `packageAge.minPackageAgeDays` | `number` | `0` | Minimum age for packages (days) |
+| `packageAge.minVersionAgeDays` | `number` | `undefined` | Minimum age for versions (days) |
+| `packageAge.warnOnly` | `boolean` | `false` | Only warn, don't block |
+
+### Version Range Rules
+
+```typescript
+{
+  package: string;           // Package name
+  range: string;             // Semver range
+  strategy: 'block' | 'fallback';
+  fallbackVersion?: string;  // Required for fallback strategy
+  reason?: string;           // Explanation for blocking
+}
 ```
 
-**Result:**
+## 📖 Examples
 
-- Any install of `@mycompany/core@2.x.x` (except 2.5.3+)
-- Automatically upgraded to `2.5.3`
-- Ensures all teams use latest stable version
+See the [examples](./examples) directory for complete configuration examples:
+- [basic.yaml](./examples/basic.yaml) - Simple setup for small teams
+- [enterprise.yaml](./examples/enterprise.yaml) - Comprehensive security setup
+- [high-security.yaml](./examples/high-security.yaml) - Maximum security configuration
 
-### Example 4: Block Pre-release Versions
-
-```yaml
-versionRangeRules:
-  - package: "next"
-    range: ">=13.0.0-0 <13.0.0"
-    strategy: "block"
-    reason: "Pre-release versions not allowed"
-```
-
-### Example 5: Multiple Rules for Same Package
-
-```yaml
-versionRangeRules:
-  # Block ancient versions
-  - package: "express"
-    range: "<4.0.0"
-    strategy: "block"
-    reason: "Version too old, multiple vulnerabilities"
-
-  # Fallback vulnerable versions
-  - package: "express"
-    range: ">=4.0.0 <4.17.3"
-    strategy: "fallback"
-    fallbackVersion: "4.18.2"
-    reason: "Path disclosure vulnerability"
-```
-
-## Semver Range Syntax
-
-The plugin supports all semver range syntax:
-
-```yaml
-# Exact version
-range: '1.2.3'
-
-# Greater than
-range: '>1.2.3'
-range: '>=1.2.3'
-
-# Less than
-range: '<2.0.0'
-range: '<=2.0.0'
-
-# Ranges
-range: '>=1.2.3 <2.0.0'
-range: '1.2.3 - 2.3.4'
-
-# Caret (compatible with)
-range: '^1.2.3'  # >=1.2.3 <2.0.0
-
-# Tilde (approximately)
-range: '~1.2.3'  # >=1.2.3 <1.3.0
-
-# Wildcards
-range: '1.x'     # >=1.0.0 <2.0.0
-range: '*'       # All versions
-```
-
-## Testing
-
-### Start Verdaccio
+## 🧪 Testing
 
 ```bash
-verdaccio --config ./config.yaml
+# Run all tests
+npm test
+
+# Run tests with coverage
+npm test:coverage
+
+# Run tests in watch mode
+npm test:watch
 ```
 
-### Test Block Strategy
+**Test Results:**
+- ✅ 80 tests passing
+- ✅ 60%+ code coverage
+- ✅ SecurityFilterPlugin: 21 tests
+- ✅ PackageAgeChecker: 13 tests
+- ✅ SecurityLogger: 16 tests
+- ✅ LicenseChecker: 15 tests
+- ✅ WhitelistChecker: 15 tests
+
+## 🔧 Development
 
 ```bash
-# Try to install blocked version
-npm install axios@0.21.1 --registry http://localhost:4873
+# Install dependencies
+npm install
 
-# Expected: Installation fails with error message
-# Error: Package has known vulnerabilities
+# Build
+npm run build
+
+# Lint
+npm run lint
+
+# Watch mode for development
+npm run build -- --watch
 ```
 
-### Test Fallback Strategy
+## 📊 Metrics & Monitoring
 
-```bash
-# Install vulnerable version
-npm install lodash@4.17.15 --registry http://localhost:4873
+When metrics are enabled, the plugin tracks:
 
-# Check installed version
-npm list lodash
+- `block` - Packages blocked by version/pattern/scope rules
+- `fallback` - Versions redirected to safe alternatives
+- `publish_rejected` - Publish attempts rejected
+- `cve_detected` - CVE vulnerabilities found
+- `license_blocked` - Packages blocked by license rules
+- `package_too_new` - Packages/versions blocked due to age restrictions
 
-# Expected: Shows lodash@4.17.21 (fallback applied)
-```
-
-### Test Publishing
-
-```bash
-# Try to publish blocked version
-npm publish my-package@1.0.0 --registry http://localhost:4873
-
-# If version falls in blocked range:
-# Error: Version 1.0.0 falls within blocked range: >=1.0.0 <2.0.0
-```
-
-## Monitoring & Logging
-
-The plugin logs all security actions:
-
-```log
-[Security Filter] Plugin initialized
-[Security Filter] Version range rules:
-  - lodash >=4.17.0 <4.17.21 [fallback -> 4.17.21]
-  - axios >=0.21.0 <=0.21.1 [block]
-[Security Filter] Applying fallback for lodash@4.17.15 -> 4.17.21
-[Security Filter] Blocking axios@0.21.1 (range: >=0.21.0 <=0.21.1)
-[Security Filter] Validating publish: my-package@1.0.0
-```
-
-### Log Levels
-
-Configure in `config.yaml`:
-
-```yaml
-logs:
-  - { type: stdout, format: pretty, level: info }
-  - { type: file, path: verdaccio.log, level: debug }
-```
-
-## Security Metadata
-
-Filtered packages include security metadata:
-
+Example metrics output:
 ```json
 {
-  "name": "lodash",
-  "versions": { ... },
-  "_security": {
-    "scanned": true,
-    "scanDate": "2024-01-15T10:30:00.000Z",
-    "filteredBy": "verdaccio-security-filter",
-    "blockedVersions": [">=4.17.0 <4.17.21"],
-    "fallbackVersions": [">=4.17.0 <4.17.21 -> 4.17.21"]
+  "timestamp": "2025-01-15T10:30:00.000Z",
+  "event": "cve_detected",
+  "packageName": "lodash",
+  "version": "4.17.20",
+  "reason": "CVE-2021-23337 (high)",
+  "metadata": {
+    "cveId": "CVE-2021-23337",
+    "severity": "high"
   }
 }
 ```
 
-## Best Practices
+## 🛠️ Use Cases
 
-### 1. Regular Updates
-
-Keep your security rules updated:
-
-```bash
-# Subscribe to security advisories
-# - GitHub Security Advisories
-# - npm Security Advisories
-# - Snyk Vulnerability Database
-```
-
-### 2. Test Before Deploying
-
-Always test rules in staging:
-
-```yaml
-# staging-config.yaml
-versionRangeRules:
-  - package: "new-rule-package"
-    range: "test-range"
-    strategy: "block" # Test block first
-```
-
-### 3. Use Fallback for Minor Fixes
-
-```yaml
-# Good: Fallback for patch versions
-- package: "express"
-  range: ">=4.17.0 <4.17.3"
-  strategy: "fallback"
-  fallbackVersion: "4.17.3"
-# Risky: Fallback across major versions
-# - package: 'react'
-#   range: '^16.0.0'
-#   strategy: 'fallback'
-#   fallbackVersion: '18.0.0'  # Breaking changes!
-```
-
-### 4. Document Reasons
-
-Always include the `reason` field:
-
-```yaml
-- package: "lodash"
-  range: ">=4.17.0 <4.17.21"
-  strategy: "fallback"
-  fallbackVersion: "4.17.21"
-  reason: "CVE-2020-28500: Prototype pollution vulnerability"
-```
-
-### 5. Monitor Fallback Usage
-
-Check logs to see which versions are being redirected:
-
-```bash
-grep "Applying fallback" verdaccio.log
-```
-
-## Common Vulnerabilities Database
-
-Example rules for common CVEs:
+### 1. Block Known Vulnerabilities
 
 ```yaml
 versionRangeRules:
-  # Lodash prototype pollution
-  - package: "lodash"
+  - package: lodash
     range: ">=4.17.0 <4.17.21"
-    strategy: "fallback"
-    fallbackVersion: "4.17.21"
-    reason: "CVE-2020-28500"
-
-  # Axios SSRF
-  - package: "axios"
-    range: ">=0.21.0 <=0.21.1"
-    strategy: "block"
-    reason: "CVE-2021-3749"
-
-  # Minimist prototype pollution
-  - package: "minimist"
-    range: "<1.2.6"
-    strategy: "fallback"
-    fallbackVersion: "1.2.8"
-    reason: "CVE-2021-44906"
-
-  # Express path disclosure
-  - package: "express"
-    range: "<4.17.3"
-    strategy: "fallback"
-    fallbackVersion: "4.18.2"
-    reason: "CVE-2022-24999"
+    strategy: block
+    reason: "CVE-2021-23337: Command injection vulnerability"
 ```
 
-## Troubleshooting
+### 2. Transparent Security Patches (Fallback)
 
-### Fallback Not Applied
-
-**Issue:** Users still getting old versions
-
-**Check:**
-
-1. Verify semver range syntax: `npm semver <version> -r '<range>'`
-2. Check logs for rule matching
-3. Ensure fallback version exists in upstream registry
-
-```bash
-# Test semver range
-npx semver 4.17.15 -r '>=4.17.0 <4.17.21'
-# Output: 4.17.15
+```yaml
+versionRangeRules:
+  - package: axios
+    range: "0.21.1"
+    strategy: fallback
+    fallbackVersion: "0.21.4"
+    reason: "SSRF vulnerability fix"
 ```
 
-### Type Checking Errors
+### 3. Enforce Corporate License Policy
 
-**Issue:** TypeScript errors in JSDoc
-
-**Solution:**
-
-```bash
-# Update TypeScript
-npm install -D typescript@latest
-
-# Check specific file
-npx tsc --noEmit index.js
+```yaml
+licenses:
+  allowed:
+    - MIT
+    - Apache-2.0
+    - BSD-3-Clause
+  blocked:
+    - GPL-3.0
+    - AGPL-3.0
+  requireLicense: true
 ```
 
-### Plugin Not Loading
+### 4. Whitelist Only Approved Packages
 
-**Check:**
-
-1. Plugin installed: `npm list -g verdaccio-security-filter`
-2. Config path correct in `config.yaml`
-3. Verdaccio restarted after config changes
-
-## API Reference
-
-See `types.d.ts` for complete TypeScript definitions.
-
-### Main Methods
-
-```javascript
-/**
- * Filter package metadata before serving
- * @param {PackageInfo} packageInfo
- * @returns {PackageInfo}
- */
-filter_metadata(packageInfo)
-
-/**
- * Validate package before publish
- * @param {string} packageName
- * @param {string} version
- * @param {Buffer} [tarball]
- * @returns {Promise<boolean>}
- */
-async validate_publish(packageName, version, tarball)
+```yaml
+mode: whitelist
+whitelist:
+  packages:
+    - lodash
+    - express
+  patterns:
+    - "^@mycompany/.*"
+  versions:
+    lodash: "^4.17.21"
 ```
 
-## License
+### 5. Automatic CVE Scanning
 
-MIT
+```yaml
+cveCheck:
+  enabled: true
+  databases: [osv, github]
+  severity: [high, critical]
+  autoBlock: true
+  updateInterval: 12
+```
 
-## Support
+### 6. Block Recently Published Packages
 
-- Issues: https://github.com/ponomarenko/verdaccio-security-filter/issues
+```yaml
+# Protect against newly published malicious packages
+packageAge:
+  enabled: true
+  minPackageAgeDays: 7       # Package must exist for 7 days
+  minVersionAgeDays: 3       # Version must exist for 3 days
+  warnOnly: false            # Block, don't just warn
+```
+
+## 🔐 Security Best Practices
+
+1. **Enable CVE Scanning** - Automatically detect and block vulnerable packages
+2. **Use Whitelist Mode** - For maximum security in sensitive environments
+3. **Enforce License Compliance** - Prevent legal issues with license filtering
+4. **Enable Package Age Filtering** - Block newly published packages to prevent supply chain attacks
+5. **Enable Metrics** - Track security events for audit and compliance
+6. **Regular Updates** - Keep the plugin and CVE database cache updated
+7. **Test Rules** - Use dry run mode (planned) before applying strict rules
+8. **Monitor Logs** - Review security logs regularly for suspicious activity
+
+## 🐛 Troubleshooting
+
+### Plugin not loading
+- Verify Verdaccio version >= 5.0.0
+- Check plugin is listed in `config.yaml` under `filters`
+- Ensure plugin is installed globally or linked correctly
+
+### CVE scanning not working
+- Check internet connectivity to OSV API (https://api.osv.dev)
+- Verify `cveCheck.enabled` is `true`
+- Check cache directory permissions
+- Review logs for API errors
+
+### Tests failing
+- Ensure Node.js >= 22.0.0
+- Run `npm install` to update dependencies
+- Clear Jest cache: `npx jest --clearCache`
+
+### Package blocked unexpectedly
+- Check logs for the reason: `logger.level: debug`
+- Review all active rules (patterns, scopes, CVE, license)
+- In whitelist mode, ensure package is explicitly approved
+
+## 📄 License
+
+MIT © [Vitaliy Ponomarenko](https://github.com/ponomarenko)
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Run tests (`npm test`)
+4. Commit your changes (`git commit -m 'Add amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/ponomarenko/verdaccio-security-filter/issues)
+- **Documentation**: [README](./README.md)
+- **Examples**: [Configuration Examples](./examples)
+
+## 🙏 Acknowledgments
+
+- [Verdaccio](https://verdaccio.org/) - The awesome private npm registry
+- [OSV](https://osv.dev/) - Open Source Vulnerabilities database
+- All contributors and users of this plugin
+
+---
+
+**Made with ❤️ for the npm security community**

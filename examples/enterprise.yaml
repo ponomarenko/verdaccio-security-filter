@@ -1,0 +1,119 @@
+# Enterprise Configuration Example
+# Comprehensive security setup for large organizations
+
+# Layer 1: Metadata filtering (filter_metadata)
+filters:
+  security-filter:
+    enabled: true
+
+    # Whitelist mode: Only approved packages allowed
+    mode: whitelist
+
+    # Approved packages
+    whitelist:
+      packages:
+        - lodash
+        - express
+        - react
+        - vue
+        - "@types/node"
+        - "@types/react"
+      patterns:
+        - "^@mycompany/.*"    # Internal company packages
+        - "^@types/.*"        # TypeScript definitions
+      versions:
+        lodash: "^4.17.21"    # Specific version constraints
+        express: "^4.18.0"
+        react: "^18.0.0"
+
+    # CVE vulnerability scanning
+    cveCheck:
+      enabled: true
+      databases:
+        - osv
+        - github
+      severity:
+        - high
+        - critical
+      autoBlock: true
+      updateInterval: 12        # Update every 12 hours
+      cacheDir: ./.security-cache
+
+    # License compliance
+    licenses:
+      allowed:
+        - MIT
+        - Apache-2.0
+        - BSD-2-Clause
+        - BSD-3-Clause
+        - ISC
+      blocked:
+        - GPL-3.0
+        - AGPL-3.0
+        - LGPL-3.0
+      requireLicense: true
+
+    # Package age filtering
+    packageAge:
+      enabled: true
+      minPackageAgeDays: 7       # Packages must exist for 7 days
+      minVersionAgeDays: 3       # Versions must exist for 3 days
+      warnOnly: false
+
+    # Version range rules for known vulnerabilities
+    versionRangeRules:
+      - package: lodash
+        range: "<4.17.21"
+        strategy: fallback
+        fallbackVersion: "4.17.21"
+        reason: "Multiple CVEs in older versions"
+
+      - package: minimist
+        range: "<1.2.6"
+        strategy: fallback
+        fallbackVersion: "1.2.6"
+        reason: "CVE-2021-44906: Prototype pollution"
+
+      - package: node-fetch
+        range: "<2.6.7"
+        strategy: block
+        reason: "CVE-2022-0235: Information exposure"
+
+    # Scope control
+    allowedScopes:
+      - "@mycompany"
+      - "@types"
+    blockedScopes:
+      - "@malicious"
+
+    # Strict size limits
+    minPackageSize: 1000          # 1KB minimum
+    maxPackageSize: 104857600     # 100MB maximum
+
+    # Pattern blocking for typosquatting protection
+    blockedPatterns:
+      - "^evil-.*"
+      - ".*-malware$"
+      - ".*hack.*"
+      - "^react-native-.*-pro$"  # Common typosquatting pattern
+
+    # Enhanced logging
+    logger:
+      level: info
+      enabled: true
+      includeTimestamp: true
+
+    # Metrics for security analytics
+    metrics:
+      enabled: true
+      output: file
+      filePath: /var/log/verdaccio/security-metrics.json
+
+    # Checksum enforcement
+    enforceChecksum: true
+
+# Layer 2: Middleware interception (register_middlewares)
+# This blocks tarball downloads even if metadata is cached
+middlewares:
+  security-filter:
+    enabled: true

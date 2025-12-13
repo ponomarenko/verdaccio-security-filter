@@ -8,7 +8,53 @@ export interface VersionRangeRule {
     reason?: string;
 }
 
+export interface CVECheckConfig {
+    enabled: boolean;
+    databases: ('osv' | 'snyk' | 'github')[];
+    severity: ('low' | 'medium' | 'high' | 'critical')[];
+    autoBlock: boolean;
+    updateInterval?: number; // hours
+    cacheDir?: string;
+}
+
+export interface WhitelistConfig {
+    packages: string[];
+    patterns: string[];
+    versions?: Record<string, string>;
+    autoApprove?: {
+        minDownloads?: number;
+        minStars?: number;
+        verifiedPublisher?: boolean;
+    };
+}
+
+export interface LicenseConfig {
+    allowed: string[];
+    blocked: string[];
+    requireLicense: boolean;
+}
+
+export interface LoggerConfig {
+    level: 'trace' | 'debug' | 'info' | 'warn' | 'error';
+    enabled: boolean;
+    includeTimestamp?: boolean;
+}
+
+export interface MetricsConfig {
+    enabled: boolean;
+    output?: 'stdout' | 'file';
+    filePath?: string;
+}
+
+export interface PackageAgeConfig {
+    enabled: boolean;
+    minPackageAgeDays: number; // Minimum age in days for a package to be accepted
+    minVersionAgeDays?: number; // Minimum age in days for a specific version to be accepted
+    warnOnly?: boolean; // Only warn instead of blocking
+}
+
 export interface SecurityConfig extends Config {
+    // Existing fields
     blockedVersions?: string[];
     blockedPatterns?: string[];
     minPackageSize?: number;
@@ -17,6 +63,15 @@ export interface SecurityConfig extends Config {
     blockedScopes?: string[];
     enforceChecksum?: boolean;
     versionRangeRules?: VersionRangeRule[];
+
+    // Phase 2: New features
+    mode?: 'blacklist' | 'whitelist';
+    whitelist?: WhitelistConfig;
+    licenses?: LicenseConfig;
+    cveCheck?: CVECheckConfig;
+    logger?: LoggerConfig;
+    metrics?: MetricsConfig;
+    packageAge?: PackageAgeConfig;
 }
 
 export interface SecurityRules {
@@ -45,4 +100,31 @@ export interface FilterResult {
     versions: Record<string, VersionData>;
     blockedVersions: string[];
     fallbacksApplied: Array<{ original: string; fallback: string }>;
+}
+
+export interface CVEVulnerability {
+    id: string;
+    severity: 'low' | 'medium' | 'high' | 'critical';
+    summary: string;
+    affectedVersions: string[];
+    fixedVersion?: string;
+    publishedDate: string;
+    source: string;
+}
+
+export interface CVECheckResult {
+    package: string;
+    version: string;
+    vulnerabilities: CVEVulnerability[];
+    isVulnerable: boolean;
+    checkedAt: string;
+}
+
+export interface MetricsData {
+    timestamp: string;
+    event: 'block' | 'fallback' | 'publish_rejected' | 'cve_detected' | 'license_blocked' | 'package_too_new';
+    packageName: string;
+    version?: string;
+    reason: string;
+    metadata?: Record<string, any>;
 }

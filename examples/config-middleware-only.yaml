@@ -1,0 +1,96 @@
+# Verdaccio Configuration with Security Filter Plugin
+# Middleware-only implementation - Compatible with Verdaccio 6.x and 7.x
+
+# Storage and plugins
+storage: ./storage
+plugins: ./plugins
+
+# Security Filter Configuration (Middleware-only)
+# IMPORTANT: This plugin works ONLY through middleware interception
+# No need for 'filters' section - all filtering is done via middleware
+middlewares:
+  security-filter:
+    enabled: true
+
+    # Use whitelist mode - only specific packages allowed
+    mode: whitelist
+
+    whitelist:
+      packages:
+        - lodash    # Allow lodash
+        - express   # Allow express
+      patterns:
+        - "^@types/.*"  # Allow all @types packages
+
+    # Optional: Block specific versions
+    blockedVersions:
+      - "lodash@4.17.20"  # Block vulnerable version
+
+    # Optional: Version range rules
+    versionRangeRules:
+      - package: "minimist"
+        range: "0.0.0 - 1.2.5"
+        strategy: "block"
+        reason: "Prototype pollution vulnerability"
+
+    # Optional: Pattern-based blocking (in blacklist mode)
+    # blockedPatterns:
+    #   - "^evil-.*"
+    #   - ".*-malicious$"
+
+    # Optional: Scope control
+    # blockedScopes:
+    #   - "@malicious"
+    # allowedScopes:
+    #   - "@company"
+    #   - "@safe-org"
+
+    # Enhanced logging
+    logger:
+      level: info      # debug, info, warn, error
+      enabled: true
+      includeTimestamp: true
+
+    # Metrics collection
+    metrics:
+      enabled: true
+      path: ./security-metrics.jsonl
+
+# Web UI settings
+web:
+  title: Verdaccio with Security Filter
+
+# Authentication
+auth:
+  htpasswd:
+    file: ./htpasswd
+
+# Uplinks
+uplinks:
+  npmjs:
+    url: https://registry.npmjs.org/
+
+# Package access control
+# NOTE: No 'storage' field needed - plugin works through middleware only
+packages:
+  '@*/*':
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+  '**':
+    access: $all
+    publish: $authenticated
+    unpublish: $authenticated
+    proxy: npmjs
+
+# Server settings
+server:
+  keepAliveTimeout: 60
+
+# Logging
+log:
+  type: stdout
+  format: pretty
+  level: info
