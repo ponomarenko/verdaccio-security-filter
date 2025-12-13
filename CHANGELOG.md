@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.6...v1.1.0) (2025-12-13)
+
+
+### Features
+
+* implement high-priority improvements for production readiness ([#16](https://github.com/ponomarenko/verdaccio-security-filter/issues/16)) ([afa174c](https://github.com/ponomarenko/verdaccio-security-filter/commit/afa174c841b2c1823dfc907e81316d2f3075b9aa))
+
 ## [1.0.6](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.5...v1.0.6) (2025-12-13)
 
 
