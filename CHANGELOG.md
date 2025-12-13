@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.2...v1.0.3) (2025-12-13)
+
+
+### Bug Fixes
+
+* update jws dependency to resolve security vulnerability ([#8](https://github.com/ponomarenko/verdaccio-security-filter/issues/8)) ([99ddcee](https://github.com/ponomarenko/verdaccio-security-filter/commit/99ddceeb95e5e513067991b6803ce1cd7a4c7a69))
+
 ## [1.0.2](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.1...v1.0.2) (2025-12-13)
 
 
