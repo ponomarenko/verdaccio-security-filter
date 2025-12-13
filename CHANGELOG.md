@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.4](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.3...v1.0.4) (2025-12-13)
+
+
+### Bug Fixes
+
+* consolidate workflow permissions and add public access flag ([#10](https://github.com/ponomarenko/verdaccio-security-filter/issues/10)) ([9f00dc8](https://github.com/ponomarenko/verdaccio-security-filter/commit/9f00dc824e9ee21abb6e3c82ac99e36a440881b0))
+
 ## [1.0.3](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.2...v1.0.3) (2025-12-13)
 
 
