@@ -1,10 +1,10 @@
-name: Release Please
+name: Release&Publish
 
 on:
   push:
     branches:
       - main
-    
+  workflow_dispatch: {} # allow manual runs    
 
 permissions:
   id-token: write  # Required for OIDC
@@ -12,7 +12,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
+  release:
     runs-on: ubuntu-latest
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
@@ -27,9 +27,12 @@ jobs:
           release-type: node
 
   publish:
-    needs: release-please
-    if: needs.release-please.outputs.release_created
+    needs: release
+    if: needs.release.outputs.release_created
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
