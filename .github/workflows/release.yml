@@ -10,23 +10,23 @@ permissions:
   pull-requests: write
 
 jobs:
-  # release:
-  #   runs-on: ubuntu-latest
-  #   outputs:
-  #     release_created: ${{ steps.release.outputs.release_created }}
-  #     tag_name: ${{ steps.release.outputs.tag_name }}
-  #   steps:
-  #     - uses: googleapis/release-please-action@v4
-  #       id: release
-  #       with:
-  #         # Personal Access Token with repo scope
-  #         token: ${{ secrets.GITHUB_TOKEN }}
-  #         # Release type for Node.js projects
-  #         release-type: node
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          # Personal Access Token with repo scope
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # Release type for Node.js projects
+          release-type: node
 
   publish:
-    # needs: release
-    # if: needs.release.outputs.release_created
+    needs: release
+    if: needs.release.outputs.release_created
     runs-on: ubuntu-latest
     permissions:
       id-token: write  # Required for OIDC
