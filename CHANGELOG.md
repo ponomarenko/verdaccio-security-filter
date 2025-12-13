@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.1...v1.0.2) (2025-12-13)
+
+
+### Bug Fixes
+
+* add npm token and dual registry publishing support ([#5](https://github.com/ponomarenko/verdaccio-security-filter/issues/5)) ([d09157f](https://github.com/ponomarenko/verdaccio-security-filter/commit/d09157fa7ae99734b30656ef6fcd5ce7af9f0c41))
+
 ## [1.0.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.0...v1.0.1) (2025-12-13)
 
 
