@@ -1,4 +1,4 @@
-name: Release&Publish
+name: Release
 
 on:
   push:
@@ -6,7 +6,6 @@ on:
       - main 
 
 permissions:
-  id-token: write  # Required for OIDC
   contents: write
   pull-requests: write
 
@@ -29,6 +28,9 @@ jobs:
     # needs: release
     # if: needs.release.outputs.release_created
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for OIDC
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -36,7 +38,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Install dependencies
