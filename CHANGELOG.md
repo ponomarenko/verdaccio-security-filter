@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.1.0...v1.2.0) (2025-12-13)
+
+
+### Features
+
+* enable release-please automation ([c5153f0](https://github.com/ponomarenko/verdaccio-security-filter/commit/c5153f0d1ab6c0d1a6241386b59355d777571a19))
+
+
+### Bug Fixes
+
+* add provenance for npm trusted publishing ([9c73e9a](https://github.com/ponomarenko/verdaccio-security-filter/commit/9c73e9a10075ae43eb1343bda0dbe81353db8da1))
+* configure OIDC permissions for npm publishing ([120b058](https://github.com/ponomarenko/verdaccio-security-filter/commit/120b05815f6f52a376a47c9d39fbd60f5f4c65f6))
+* remove needs dependency in publish job ([dc4561d](https://github.com/ponomarenko/verdaccio-security-filter/commit/dc4561d3fa0668de6b079560c26f6fd1b61f00fb))
+* revert codecov action to v5 ([449c815](https://github.com/ponomarenko/verdaccio-security-filter/commit/449c8151418abb7beb7be0ed7d50ecbe1444ea69))
+
 ## [1.1.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.6...v1.1.0) (2025-12-13)
 
 
