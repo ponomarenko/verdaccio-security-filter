@@ -6,7 +6,6 @@ on:
       - main
 
 permissions:
-  id-token: write  # Required for OIDC
   contents: write
   pull-requests: write
 
@@ -55,4 +54,11 @@ jobs:
         run: npm run build
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        run: npm publish --access public
+      
+      - uses: actions/setup-node@v6
+        with:
+          registry-url: 'https://npm.pkg.github.com'
+      - run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
