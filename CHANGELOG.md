@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.6](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.5...v1.0.6) (2025-12-13)
+
+
+### Bug Fixes
+
+* add NPM_TOKEN for initial package publication ([d694418](https://github.com/ponomarenko/verdaccio-security-filter/commit/d694418df1106e250dbc21550dee35bc71d14aee))
+
 ## [1.0.5](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.0.4...v1.0.5) (2025-12-13)
 
 
