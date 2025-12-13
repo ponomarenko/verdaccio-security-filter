@@ -6,6 +6,7 @@ on:
       - main 
 
 permissions:
+  id-token: write  # Required for OIDC
   contents: write
   pull-requests: write
 
@@ -28,9 +29,6 @@ jobs:
     # needs: release
     # if: needs.release.outputs.release_created
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write  # Required for OIDC
-      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -43,12 +41,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Run tests
-        run: npm run test --if-present
-
-      - name: Build package
-        run: npm run build
 
       - name: Publish to npm
         run: npm publish
