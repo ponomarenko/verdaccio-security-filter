@@ -203,6 +203,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
      * Register Express middleware to intercept package requests
      * Intercepts both metadata and tarball requests
      */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     public register_middlewares(app: Application, _auth: IBasicAuth<SecurityConfig>, _storage: IStorageManager<SecurityConfig>): void {
         this.logger.info('[Middleware] Registering security filter middleware');
         this.logger.info(`[Middleware] Config mode: ${this.config.mode || 'NOT SET'}`);
@@ -265,6 +266,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         // Intercept the response
                         const originalSend = res.send;
                         const originalJson = res.json;
+                        // eslint-disable-next-line @typescript-eslint/no-this-alias
                         const self = this;
 
                         // Override res.json to intercept JSON responses
@@ -333,7 +335,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
                                         return originalSend.call(this, JSON.stringify(blockedResponse));
                                     }
-                                } catch (e) {
+                                } catch {
                                     // Not JSON, pass through
                                 }
                             }

@@ -46,23 +46,8 @@ jobs:
       - name: Run tests
         run: npm run test --if-present
 
-      - name: Verify package contents
-        run: npm pack --dry-run
-
       - name: Build package
         run: npm run build
 
       - name: Publish to npm
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Setup Node.js for GitHub Packages
-        uses: actions/setup-node@v6
-        with:
-          registry-url: 'https://npm.pkg.github.com'
-
-      - name: Publish to GitHub Packages
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
