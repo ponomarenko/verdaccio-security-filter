@@ -37,6 +37,15 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     constructor(config: SecurityConfig, options: PluginOptions<SecurityConfig>) {
         this.config = config || {} as SecurityConfig;
 
+        // Set default error handling strategy if not provided
+        if (!this.config.errorHandling) {
+            this.config.errorHandling = {
+                onFilterError: 'fail-open',
+                onCveCheckError: 'fail-open',
+                onLicenseCheckError: 'fail-open',
+            };
+        }
+
         // Initialize enhanced logger
         this.logger = new SecurityLogger(options.logger, this.config.logger);
 
@@ -490,7 +499,29 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
         } catch (error: any) {
             this.logger.error(`[filter_metadata] Error processing ${packageName}: ${error.message}`);
-            // On error, allow package through but log the issue
+            const errorStrategy = this.config.errorHandling?.onFilterError || 'fail-open';
+
+            if (errorStrategy === 'fail-closed') {
+                this.logger.warn(`[filter_metadata] Error handling: fail-closed - BLOCKING ${packageName}`);
+                this.metrics.recordBlock(packageName, '*', `Error during processing: ${error.message}`);
+
+                return {
+                    ...packageInfo,
+                    versions: {},
+                    'dist-tags': {},
+                    security: {
+                        blocked: true,
+                        reason: `Error during security processing (fail-closed mode): ${error.message}`,
+                        plugin: {
+                            name: 'verdaccio-security-filter',
+                            version: '2.0.0',
+                        },
+                        blockedAt: new Date().toISOString(),
+                    }
+                } as Package;
+            }
+
+            this.logger.warn(`[filter_metadata] Error handling: fail-open - ALLOWING ${packageName}`);
             return packageInfo;
         }
     }

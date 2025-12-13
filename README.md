@@ -4,9 +4,10 @@ Advanced security filter plugin for Verdaccio with **dual-layer protection archi
 
 [![npm version](https://img.shields.io/npm/v/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
 [![npm downloads](https://img.shields.io/npm/dm/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
+[![CI](https://github.com/ponomarenko/verdaccio-security-filter/actions/workflows/ci.yml/badge.svg)](https://github.com/ponomarenko/verdaccio-security-filter/actions/workflows/ci.yml)
 [![Tests](https://img.shields.io/badge/tests-71%20passing-brightgreen)](./tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)]()
-[![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)]()
+[![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)]()
 [![Verdaccio](https://img.shields.io/badge/Verdaccio-6.x%20%7C%207.x-orange)]()
 
 ## 🏗️ Dual-Layer Architecture
@@ -77,6 +78,20 @@ This plugin implements **two independent security layers** for complete protecti
 - **Size Limits** - Enforce minimum and maximum package sizes
 - **Metadata Validation** - Verify package integrity and detect dangerous characters
 - **Checksum Enforcement** - Ensure package integrity
+
+#### ⚙️ Reliability & Error Handling
+- **Fail-Safe/Fail-Closed Configuration** - Choose error handling strategy
+  - **Fail-Open (Default)** - Allow packages on errors (availability priority)
+  - **Fail-Closed** - Block packages on errors (security priority)
+  - **Granular Control** - Different strategies for filter, CVE, and license checks
+- **Retry Logic** - Automatic retry with exponential backoff for API calls
+  - 3 retries with increasing delays (1s, 2s, 4s)
+  - Rate limiting detection and handling
+  - Request timeout protection (10s)
+- **Resilient CVE Scanning** - Production-ready vulnerability checking
+  - Network failure recovery
+  - API timeout protection
+  - Graceful degradation on errors
 
 ### 🔮 Planned Features (Roadmap)
 
@@ -451,6 +466,39 @@ middlewares:
 | `packageAge.minPackageAgeDays` | `number` | `0` | Minimum age for packages (days) |
 | `packageAge.minVersionAgeDays` | `number` | `undefined` | Minimum age for versions (days) |
 | `packageAge.warnOnly` | `boolean` | `false` | Only warn, don't block |
+
+### Error Handling Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `errorHandling.onFilterError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when filter errors occur |
+| `errorHandling.onCveCheckError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when CVE check fails |
+| `errorHandling.onLicenseCheckError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when license check fails |
+
+**Error Handling Strategies:**
+- **fail-open** (Default): Allow packages through on errors (prioritizes availability)
+- **fail-closed**: Block packages on errors (prioritizes security)
+
+**Example Configuration:**
+```yaml
+# Production: Security-first approach
+errorHandling:
+  onFilterError: fail-closed
+  onCveCheckError: fail-closed
+  onLicenseCheckError: fail-closed
+
+# Development: Availability-first approach
+errorHandling:
+  onFilterError: fail-open
+  onCveCheckError: fail-open
+  onLicenseCheckError: fail-open
+
+# Balanced: Block only on license failures
+errorHandling:
+  onFilterError: fail-open
+  onCveCheckError: fail-open
+  onLicenseCheckError: fail-closed
+```
 
 ### Version Range Rules
 
