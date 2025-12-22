@@ -85,6 +85,47 @@ filters:
       minVersionAgeDays: 7       # Versions must exist for 1 week
       warnOnly: false            # Block, don't just warn
 
+    # Author filtering - block packages from untrusted sources
+    authorFilter:
+      enabled: true
+      # Block specific suspicious authors
+      blockedAuthors:
+        - "Suspicious Author"
+        - "Known Bad Actor"
+      # Block author name patterns
+      blockedAuthorPatterns:
+        - "^Bot.*"
+        - ".*Spammer$"
+        - "^Test.*"
+      # Block specific email addresses
+      blockedEmails:
+        - "malicious@example.com"
+      # Block email patterns (temporary email services)
+      blockedEmailPatterns:
+        - ".*@temporary-mail\\.com$"
+        - ".*@tempmail\\..*"
+        - ".*@guerrillamail\\..*"
+        - ".*@10minutemail\\..*"
+      # Block entire email domains
+      blockedEmailDomains:
+        - ".ru"           # All Russian domains
+        - "yandex.ru"
+        - "mail.ru"
+        - "rambler.ru"
+      # Block packages from sanctioned/high-risk regions
+      blockedRegions:
+        - "ru"            # Russia
+        - "by"            # Belarus
+        - "kp"            # North Korea
+        - "ir"            # Iran
+        - "sy"            # Syria
+        - "cu"            # Cuba
+        - "sd"            # Sudan
+      # Require verified email information
+      requireVerifiedEmail: true
+      # Block immediately (no warnings)
+      warnOnly: false
+
     # Comprehensive version blocking
     versionRangeRules:
       # Lodash vulnerabilities

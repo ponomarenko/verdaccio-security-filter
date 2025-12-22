@@ -1,0 +1,234 @@
+# Author Filtering Configuration Example
+# Demonstrates various author filtering capabilities
+
+# Layer 1: Metadata filtering with author checks
+filters:
+  security-filter:
+    enabled: true
+
+    # Author filtering - comprehensive configuration
+    authorFilter:
+      enabled: true
+
+      # ========================================
+      # 1. Block by Author Name (Exact Match)
+      # ========================================
+      blockedAuthors:
+        - "Suspicious Author"
+        - "Known Bad Actor"
+        - "Banned Developer"
+
+      # ========================================
+      # 2. Block by Author Name Pattern (Regex)
+      # ========================================
+      blockedAuthorPatterns:
+        - "^Bot.*"              # Block names starting with "Bot"
+        - ".*Spammer$"          # Block names ending with "Spammer"
+        - "^Test.*User$"        # Block test accounts
+        - ".*[0-9]{6,}.*"       # Block names with 6+ consecutive numbers
+
+      # ========================================
+      # 3. Block by Email Address (Exact Match)
+      # ========================================
+      blockedEmails:
+        - "malicious@example.com"
+        - "spammer@badactor.org"
+        - "blocked-user@domain.com"
+
+      # ========================================
+      # 4. Block by Email Pattern (Regex)
+      # ========================================
+      blockedEmailPatterns:
+        # Temporary email services
+        - ".*@temporary-mail\\.com$"
+        - ".*@tempmail\\..*"
+        - ".*@guerrillamail\\..*"
+        - ".*@10minutemail\\..*"
+        - ".*@mailinator\\.com$"
+        - ".*@throwaway\\.email$"
+
+        # Suspicious patterns
+        - ".*noreply.*@.*"
+        - ".*no-reply.*@.*"
+        - ".*admin.*@.*\\.ru$"
+
+      # ========================================
+      # 5. Block by Email Domain (Exact Match)
+      # ========================================
+      blockedEmailDomains:
+        # Block all .ru domains
+        - ".ru"
+
+        # Block specific Russian services
+        - "yandex.ru"
+        - "mail.ru"
+        - "rambler.ru"
+        - "ya.ru"
+        - "bk.ru"
+        - "list.ru"
+
+        # Block other specific domains
+        - "suspicious-domain.com"
+        - "known-bad-service.net"
+
+      # ========================================
+      # 6. Block by Region (Pre-configured Lists)
+      # ========================================
+      # Each region includes multiple common email domains
+      blockedRegions:
+        - "ru"            # Russia: .ru, yandex.ru, mail.ru, rambler.ru, etc.
+        - "cn"            # China: .cn, qq.com, 163.com, 126.com, sina.com, sohu.com
+        - "by"            # Belarus: .by, tut.by, mail.by
+        - "kp"            # North Korea: .kp
+        - "ir"            # Iran: .ir
+        - "sy"            # Syria: .sy
+        - "cu"            # Cuba: .cu
+        - "sd"            # Sudan: .sd
+
+      # ========================================
+      # 7. Require Verified Email
+      # ========================================
+      # Blocks packages without author email information
+      requireVerifiedEmail: true
+
+      # ========================================
+      # 8. Warn-Only Mode
+      # ========================================
+      # Set to true to log warnings without blocking
+      # Useful for testing rules before enforcement
+      warnOnly: false
+
+    # ========================================
+    # Logging Configuration
+    # ========================================
+    logger:
+      level: info
+      enabled: true
+      includeTimestamp: true
+
+    # ========================================
+    # Metrics Configuration
+    # ========================================
+    metrics:
+      enabled: true
+      output: file
+      filePath: ./security-metrics.json
+
+# Layer 2: Middleware interception
+middlewares:
+  security-filter:
+    enabled: true
+
+# ========================================
+# Example Use Cases
+# ========================================
+
+# Use Case 1: Block All Russian Packages
+# --------------------------------------
+# authorFilter:
+#   enabled: true
+#   blockedRegions:
+#     - "ru"
+#   warnOnly: false
+
+# Use Case 2: Block Temporary Email Services
+# -------------------------------------------
+# authorFilter:
+#   enabled: true
+#   blockedEmailPatterns:
+#     - ".*@temporary-mail\\.com$"
+#     - ".*@tempmail\\..*"
+#     - ".*@guerrillamail\\..*"
+#   warnOnly: false
+
+# Use Case 3: Require Verified Authors Only
+# ------------------------------------------
+# authorFilter:
+#   enabled: true
+#   requireVerifiedEmail: true
+#   warnOnly: false
+
+# Use Case 4: Test Rules (Warn-Only Mode)
+# ----------------------------------------
+# authorFilter:
+#   enabled: true
+#   blockedRegions:
+#     - "ru"
+#     - "cn"
+#   warnOnly: true  # Log warnings but don't block
+
+# Use Case 5: Block Specific Bad Actors
+# --------------------------------------
+# authorFilter:
+#   enabled: true
+#   blockedAuthors:
+#     - "Known Malicious Author"
+#   blockedEmails:
+#     - "malicious@example.com"
+#   warnOnly: false
+
+# Use Case 6: Corporate Policy - US/EU Only
+# ------------------------------------------
+# authorFilter:
+#   enabled: true
+#   blockedRegions:
+#     - "ru"
+#     - "cn"
+#     - "by"
+#     - "kp"
+#     - "ir"
+#     - "sy"
+#     - "cu"
+#     - "sd"
+#   warnOnly: false
+
+# ========================================
+# How It Works
+# ========================================
+
+# The plugin checks packages in this order:
+# 1. Author name (exact match and patterns)
+# 2. Author email (exact match and patterns)
+# 3. Email domain (exact match)
+# 4. Email region (pre-configured domain lists)
+# 5. Maintainers list (same checks)
+# 6. Contributors list (same checks)
+#
+# If ANY author/maintainer/contributor matches a blocked rule,
+# the entire package is blocked.
+
+# ========================================
+# Supported Region Codes
+# ========================================
+
+# Region | Domains Included
+# -------|------------------
+# ru     | .ru, yandex.ru, mail.ru, rambler.ru, ya.ru, bk.ru, list.ru
+# cn     | .cn, qq.com, 163.com, 126.com, sina.com, sohu.com
+# by     | .by, tut.by, mail.by
+# kp     | .kp
+# ir     | .ir
+# sy     | .sy
+# cu     | .cu
+# sd     | .sd
+
+# ========================================
+# Testing Your Configuration
+# ========================================
+
+# 1. Start with warnOnly: true to see what would be blocked
+# 2. Review logs to ensure rules work as expected
+# 3. Adjust patterns and rules as needed
+# 4. Set warnOnly: false to enforce blocking
+# 5. Monitor metrics to track blocked packages
+
+# ========================================
+# Important Notes
+# ========================================
+
+# - Author filtering is case-insensitive
+# - Checks apply to author, maintainers, and contributors
+# - Regex patterns use JavaScript RegExp syntax
+# - Domain matching includes both exact and suffix matches
+# - Region blocking uses pre-configured domain lists
+# - Use metrics to audit all blocking decisions

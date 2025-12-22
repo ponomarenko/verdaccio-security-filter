@@ -71,6 +71,13 @@ This plugin implements **two independent security layers** for complete protecti
   - **Minimum Package Age** - Require packages to exist for a minimum number of days
   - **Minimum Version Age** - Require specific versions to exist for a minimum number of days
   - **Warn-Only Mode** - Log warnings without blocking
+- **Author Filtering** - Block packages based on author information
+  - **Block by Author Name** - Block specific author names or patterns
+  - **Block by Email** - Block specific email addresses or patterns
+  - **Block by Email Domain** - Block entire email domains (e.g., `.ru`, `yandex.ru`)
+  - **Block by Region** - Block authors from specific regions based on email domains
+  - **Maintainer & Contributor Checking** - Validates all package maintainers and contributors
+  - **Warn-Only Mode** - Log warnings without blocking
 - **Middleware Interception** - HTTP middleware that blocks tarball downloads for blocked packages
   - Prevents blocked packages from being installed as dependencies
   - Intercepts requests to `/:package/-/:filename.tgz` routes
@@ -467,6 +474,20 @@ middlewares:
 | `packageAge.minVersionAgeDays` | `number` | `undefined` | Minimum age for versions (days) |
 | `packageAge.warnOnly` | `boolean` | `false` | Only warn, don't block |
 
+### Author Filter Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `authorFilter.enabled` | `boolean` | `false` | Enable author filtering |
+| `authorFilter.blockedAuthors` | `string[]` | `[]` | List of author names to block |
+| `authorFilter.blockedAuthorPatterns` | `string[]` | `[]` | Regex patterns for author names |
+| `authorFilter.blockedEmails` | `string[]` | `[]` | List of email addresses to block |
+| `authorFilter.blockedEmailPatterns` | `string[]` | `[]` | Regex patterns for author emails |
+| `authorFilter.blockedEmailDomains` | `string[]` | `[]` | Email domains to block (e.g., `.ru`, `yandex.ru`) |
+| `authorFilter.blockedRegions` | `string[]` | `[]` | Region codes to block (`ru`, `cn`, `by`, `kp`, `ir`, `sy`, `cu`, `sd`) |
+| `authorFilter.requireVerifiedEmail` | `boolean` | `false` | Require author email information |
+| `authorFilter.warnOnly` | `boolean` | `false` | Only warn, don't block |
+
 ### Error Handling Options
 
 | Option | Type | Default | Description |
@@ -533,13 +554,14 @@ npm test:watch
 ```
 
 **Test Results:**
-- ✅ 80 tests passing
+- ✅ 108 tests passing
 - ✅ 60%+ code coverage
 - ✅ SecurityFilterPlugin: 21 tests
 - ✅ PackageAgeChecker: 13 tests
 - ✅ SecurityLogger: 16 tests
 - ✅ LicenseChecker: 15 tests
 - ✅ WhitelistChecker: 15 tests
+- ✅ AuthorChecker: 28 tests
 
 ## 🔧 Development
 
@@ -567,6 +589,7 @@ When metrics are enabled, the plugin tracks:
 - `cve_detected` - CVE vulnerabilities found
 - `license_blocked` - Packages blocked by license rules
 - `package_too_new` - Packages/versions blocked due to age restrictions
+- `author_blocked` - Packages blocked due to author/region filtering
 
 Example metrics output:
 ```json
@@ -656,16 +679,54 @@ packageAge:
   warnOnly: false            # Block, don't just warn
 ```
 
+### 7. Block Packages by Author/Region
+
+```yaml
+# Block packages from specific authors, emails, or regions
+authorFilter:
+  enabled: true
+  # Block specific author names
+  blockedAuthors:
+    - "Suspicious Author"
+    - "Known Bad Actor"
+  # Block author names matching patterns
+  blockedAuthorPatterns:
+    - "^Bot.*"
+    - ".*Spammer$"
+  # Block specific email addresses
+  blockedEmails:
+    - "malicious@example.com"
+  # Block email patterns
+  blockedEmailPatterns:
+    - ".*@temporary-mail\\.com$"
+  # Block entire email domains
+  blockedEmailDomains:
+    - ".ru"           # All .ru domains
+    - "yandex.ru"     # Specific domain
+    - "mail.ru"
+  # Block by region (includes multiple common domains)
+  blockedRegions:
+    - "ru"            # Russia (.ru, yandex.ru, mail.ru, etc.)
+    - "cn"            # China (.cn, qq.com, 163.com, etc.)
+    - "by"            # Belarus
+    - "kp"            # North Korea
+  # Require author information
+  requireVerifiedEmail: true
+  # Warn-only mode (don't block, just log)
+  warnOnly: false
+```
+
 ## 🔐 Security Best Practices
 
 1. **Enable CVE Scanning** - Automatically detect and block vulnerable packages
 2. **Use Whitelist Mode** - For maximum security in sensitive environments
 3. **Enforce License Compliance** - Prevent legal issues with license filtering
 4. **Enable Package Age Filtering** - Block newly published packages to prevent supply chain attacks
-5. **Enable Metrics** - Track security events for audit and compliance
-6. **Regular Updates** - Keep the plugin and CVE database cache updated
-7. **Test Rules** - Use dry run mode (planned) before applying strict rules
-8. **Monitor Logs** - Review security logs regularly for suspicious activity
+5. **Enable Author Filtering** - Block packages from untrusted authors or regions
+6. **Enable Metrics** - Track security events for audit and compliance
+7. **Regular Updates** - Keep the plugin and CVE database cache updated
+8. **Test Rules** - Use dry run mode (planned) before applying strict rules
+9. **Monitor Logs** - Review security logs regularly for suspicious activity
 
 ## 🐛 Troubleshooting
 

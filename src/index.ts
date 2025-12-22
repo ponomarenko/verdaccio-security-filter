@@ -9,6 +9,7 @@ import { WhitelistChecker } from './lib/whitelist-checker';
 import { CVEChecker } from './lib/cve-checker';
 import { LicenseChecker } from './lib/license-checker';
 import { PackageAgeChecker } from './lib/package-age-checker';
+import { AuthorChecker } from './lib/author-checker';
 
 /**
  * Security Filter Plugin for Verdaccio
@@ -28,6 +29,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     private readonly cveChecker: CVEChecker;
     private readonly licenseChecker: LicenseChecker;
     private readonly packageAgeChecker: PackageAgeChecker;
+    private readonly authorChecker: AuthorChecker;
 
     /**
      * Creates a new SecurityFilterPlugin instance
@@ -59,6 +61,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         this.cveChecker = new CVEChecker(this.config.cveCheck);
         this.licenseChecker = new LicenseChecker(this.config.licenses);
         this.packageAgeChecker = new PackageAgeChecker(this.config.packageAge);
+        this.authorChecker = new AuthorChecker(this.config.authorFilter);
 
         // Security rules configuration
         this.securityRules = {
@@ -131,6 +134,11 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             const summary = this.whitelistChecker.getSummary();
             this.logger.info(`Whitelist mode: ${summary.totalPackages} packages, ${summary.totalPatterns} patterns`);
         }
+
+        if (this.config.authorFilter?.enabled) {
+            const summary = this.authorChecker.getSummary();
+            this.logger.info(`Author filtering enabled: ${summary.blockedAuthors} authors, ${summary.blockedEmails} emails, ${summary.blockedRegions} regions blocked`);
+        }
     }
 
     /**
@@ -145,6 +153,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         if (this.config.cveCheck?.enabled) features.push('cve-checking');
         if (this.config.licenses?.allowed && this.config.licenses.allowed.length > 0) features.push('license-filtering');
         if (this.config.packageAge?.enabled) features.push('package-age-verification');
+        if (this.config.authorFilter?.enabled) features.push('author-filtering');
         if (this.securityRules.versionRangeRules.length > 0) features.push('version-range-rules');
         if (this.securityRules.blockedPatterns.length > 0) features.push('pattern-blocking');
         if (this.securityRules.blockedVersions.length > 0) features.push('version-blocking');
@@ -494,6 +503,49 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 }
             }
 
+            // 5. Author Filter Check
+            if (this.config.authorFilter?.enabled) {
+                const latestVersion = packageInfo['dist-tags']?.latest;
+                if (latestVersion && packageInfo.versions?.[latestVersion]) {
+                    const versionData = packageInfo.versions[latestVersion];
+                    const authorResult = this.authorChecker.checkAuthor(versionData);
+
+                    if (!authorResult.allowed && !this.config.authorFilter.warnOnly) {
+                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${authorResult.reason}`);
+                        this.metrics.record({
+                            timestamp: new Date().toISOString(),
+                            event: 'author_blocked',
+                            packageName,
+                            version: latestVersion,
+                            reason: authorResult.reason || 'Author not allowed',
+                            metadata: {
+                                blockedBy: authorResult.blockedBy,
+                                authorInfo: authorResult.authorInfo,
+                            },
+                        });
+
+                        return {
+                            ...packageInfo,
+                            versions: {},
+                            'dist-tags': {},
+                            security: {
+                                blocked: true,
+                                reason: authorResult.reason || 'Author not allowed',
+                                blockedBy: authorResult.blockedBy,
+                                authorInfo: authorResult.authorInfo,
+                                plugin: {
+                                    name: 'verdaccio-security-filter',
+                                    version: '2.0.0',
+                                },
+                                blockedAt: new Date().toISOString(),
+                            }
+                        } as Package;
+                    } else if (!authorResult.allowed && this.config.authorFilter.warnOnly) {
+                        this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName} - ${authorResult.reason} (warn-only mode)`);
+                    }
+                }
+            }
+
             this.logger.info(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
             return packageInfo;
 
@@ -617,5 +669,6 @@ export { WhitelistChecker } from './lib/whitelist-checker';
 export { CVEChecker } from './lib/cve-checker';
 export { LicenseChecker } from './lib/license-checker';
 export { PackageAgeChecker } from './lib/package-age-checker';
+export { AuthorChecker } from './lib/author-checker';
 
 export * from './types';
