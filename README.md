@@ -2,6 +2,7 @@
 
 Advanced security filter plugin for Verdaccio with **dual-layer protection architecture** combining middleware interception and metadata filtering for comprehensive package security.
 
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://stand-with-ukraine.pp.ua)
 [![npm version](https://img.shields.io/npm/v/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
 [![npm downloads](https://img.shields.io/npm/dm/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
 [![CI](https://github.com/ponomarenko/verdaccio-security-filter/actions/workflows/ci.yml/badge.svg)](https://github.com/ponomarenko/verdaccio-security-filter/actions/workflows/ci.yml)
