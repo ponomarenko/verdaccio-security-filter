@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.2.0...v1.3.0) (2025-12-22)
+
+
+### Features
+
+* add author and region-based package filtering ([#19](https://github.com/ponomarenko/verdaccio-security-filter/issues/19)) ([64597b8](https://github.com/ponomarenko/verdaccio-security-filter/commit/64597b8495272374dbba877b8de5e31c454b21d0))
+
 ## [1.2.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.1.0...v1.2.0) (2025-12-13)
 
 
