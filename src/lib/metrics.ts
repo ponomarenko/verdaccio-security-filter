@@ -168,6 +168,7 @@ export class MetricsCollector {
             cve_detected: 0,
             license_blocked: 0,
             package_too_new: 0,
+            author_blocked: 0,
         };
 
         this.metricsBuffer.forEach(metric => {

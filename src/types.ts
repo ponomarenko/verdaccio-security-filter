@@ -53,6 +53,18 @@ export interface PackageAgeConfig {
     warnOnly?: boolean; // Only warn instead of blocking
 }
 
+export interface AuthorFilterConfig {
+    enabled: boolean;
+    blockedAuthors?: string[]; // List of author names to block
+    blockedAuthorPatterns?: string[]; // Regex patterns for author names
+    blockedEmails?: string[]; // List of author email addresses to block
+    blockedEmailPatterns?: string[]; // Regex patterns for author emails
+    blockedEmailDomains?: string[]; // List of email domains to block (e.g., '.ru', '@yandex.ru')
+    blockedRegions?: string[]; // Region codes to block based on email domain (e.g., 'ru', 'cn')
+    requireVerifiedEmail?: boolean; // Require verified email from npm registry
+    warnOnly?: boolean; // Only warn instead of blocking
+}
+
 export interface SecurityConfig extends Config {
     // Existing fields
     blockedVersions?: string[];
@@ -72,6 +84,7 @@ export interface SecurityConfig extends Config {
     logger?: LoggerConfig;
     metrics?: MetricsConfig;
     packageAge?: PackageAgeConfig;
+    authorFilter?: AuthorFilterConfig;
 
     // Error handling strategy
     errorHandling?: {
@@ -129,9 +142,22 @@ export interface CVECheckResult {
 
 export interface MetricsData {
     timestamp: string;
-    event: 'block' | 'fallback' | 'publish_rejected' | 'cve_detected' | 'license_blocked' | 'package_too_new';
+    event: 'block' | 'fallback' | 'publish_rejected' | 'cve_detected' | 'license_blocked' | 'package_too_new' | 'author_blocked';
     packageName: string;
     version?: string;
     reason: string;
     metadata?: Record<string, any>;
+}
+
+export interface AuthorInfo {
+    name?: string;
+    email?: string;
+    url?: string;
+}
+
+export interface AuthorCheckResult {
+    allowed: boolean;
+    reason?: string;
+    blockedBy?: 'name' | 'email' | 'domain' | 'region';
+    authorInfo?: AuthorInfo;
 }
