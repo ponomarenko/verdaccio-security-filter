@@ -67,7 +67,9 @@
   },
   "homepage": "https://github.com/ponomarenko/verdaccio-security-filter#readme",
   "files": [
-    "build/",
-    "README.md"
+    "build/**/*.js",
+    "build/**/*.d.ts",
+    "README.md",
+    "LICENSE"
   ]
 }

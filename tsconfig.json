@@ -11,6 +11,9 @@
     "outDir": "./build",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
+    "removeComments": true,
+    "sourceMap": false,
+    "declarationMap": false,
     "types": [
       "node"
     ]
