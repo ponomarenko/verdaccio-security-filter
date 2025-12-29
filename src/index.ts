@@ -281,84 +281,35 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     const blockResult = await this._checkPackageBlock(packageName);
 
                     if (blockResult.blocked) {
-                        // Intercept the response
-                        const originalSend = res.send;
-                        const originalJson = res.json;
-                        // eslint-disable-next-line @typescript-eslint/no-this-alias
-                        const self = this;
+                        this.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
 
-                        // Override res.json to intercept JSON responses
-                        res.json = function(body: any): Response {
-                            if (body && typeof body === 'object' && body.name === packageName) {
-                                // This is package metadata - modify it to show blocked info
-                                self.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
-                                self.logger.info(`[Middleware] Modifying response to show blocking info`);
-
-                                const blockedResponse = {
-                                    name: packageName,
-                                    versions: {},
-                                    'dist-tags': {},
-                                    security: {
-                                        blocked: true,
-                                        reason: blockResult.reason,
-                                        plugin: {
-                                            name: 'verdaccio-security-filter',
-                                            version: '1.0.0',
-                                            mode: self.config.mode || 'blacklist',
-                                        },
-                                        blockedAt: new Date().toISOString(),
-                                        rules: self._getAppliedRules(packageName),
-                                        message: `This package has been blocked by security filter: ${blockResult.reason}`,
-                                        contact: 'Please contact your registry administrator for more information',
-                                    },
-                                    _security: {
-                                        blocked: true,
-                                        reason: blockResult.reason,
-                                        blockedBy: 'verdaccio-security-filter',
-                                        blockedAt: new Date().toISOString(),
-                                    }
-                                };
-
-                                return originalJson.call(this, blockedResponse);
+                        const blockedResponse = {
+                            name: packageName,
+                            versions: {},
+                            'dist-tags': {},
+                            security: {
+                                blocked: true,
+                                reason: blockResult.reason,
+                                plugin: {
+                                    name: 'verdaccio-security-filter',
+                                    version: '1.0.0',
+                                    mode: this.config.mode || 'blacklist',
+                                },
+                                blockedAt: new Date().toISOString(),
+                                rules: this._getAppliedRules(packageName),
+                                message: `This package has been blocked by security filter: ${blockResult.reason}`,
+                                contact: 'Please contact your registry administrator for more information',
+                            },
+                            _security: {
+                                blocked: true,
+                                reason: blockResult.reason,
+                                blockedBy: 'verdaccio-security-filter',
+                                blockedAt: new Date().toISOString(),
                             }
-                            return originalJson.call(this, body);
                         };
 
-                        // Override res.send for non-JSON responses
-                        res.send = function(body: any): Response {
-                            if (typeof body === 'string') {
-                                try {
-                                    const parsed = JSON.parse(body);
-                                    if (parsed && parsed.name === packageName) {
-                                        self.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
-
-                                        const blockedResponse = {
-                                            name: packageName,
-                                            versions: {},
-                                            'dist-tags': {},
-                                            security: {
-                                                blocked: true,
-                                                reason: blockResult.reason,
-                                                plugin: {
-                                                    name: 'verdaccio-security-filter',
-                                                    version: '1.0.0',
-                                                    mode: self.config.mode || 'blacklist',
-                                                },
-                                                blockedAt: new Date().toISOString(),
-                                                rules: self._getAppliedRules(packageName),
-                                                message: `This package has been blocked by security filter: ${blockResult.reason}`,
-                                                contact: 'Please contact your registry administrator for more information',
-                                            }
-                                        };
-
-                                        return originalSend.call(this, JSON.stringify(blockedResponse));
-                                    }
-                                } catch {
-                                    // Not JSON, pass through
-                                }
-                            }
-                            return originalSend.call(this, body);
-                        };
+                        res.status(200).json(blockedResponse);
+                        return;
                     } else {
                         this.logger.info(`[Middleware] [OK] ALLOWED METADATA: ${packageName}`);
                     }
@@ -409,17 +360,27 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 } as Package;
             }
 
-            // 2. CVE Check - check all versions
+            // 2. CVE Check - check versions in controlled batches
             if (this.config.cveCheck?.enabled) {
                 const versions = Object.keys(packageInfo.versions || {});
                 const vulnerableVersions: string[] = [];
 
-                for (const version of versions) {
-                    const cveResult = await this.cveChecker.checkPackage(packageName, version);
-                    if (cveResult.isVulnerable) {
-                        vulnerableVersions.push(version);
-                        this.logger.warn(`[filter_metadata] CVE found in ${packageName}@${version}: ${cveResult.vulnerabilities.length} vulnerabilities`);
-                    }
+                const BATCH_SIZE = 10;
+                for (let i = 0; i < versions.length; i += BATCH_SIZE) {
+                    const batch = versions.slice(i, i + BATCH_SIZE);
+                    const results = await Promise.allSettled(
+                        batch.map(version => this.cveChecker.checkPackage(packageName, version))
+                    );
+
+                    results.forEach((result, index) => {
+                        if (result.status === 'fulfilled' && result.value.isVulnerable) {
+                            const version = batch[index];
+                            vulnerableVersions.push(version);
+                            this.logger.warn(`[filter_metadata] CVE found in ${packageName}@${version}: ${result.value.vulnerabilities.length} vulnerabilities`);
+                        } else if (result.status === 'rejected') {
+                            this.logger.error(`[filter_metadata] CVE check failed for ${packageName}@${batch[index]}: ${result.reason}`);
+                        }
+                    });
                 }
 
                 // If configured to auto-block and vulnerabilities found
@@ -659,6 +620,22 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         }
 
         return rules;
+    }
+
+    /**
+     * Cleanup plugin resources
+     * Should be called when Verdaccio shuts down
+     */
+    destroy(): void {
+        this.logger.info('[Cleanup] Shutting down security filter plugin');
+
+        try {
+            this.cveChecker.destroy();
+            this.metrics.cleanup();
+            this.logger.info('[Cleanup] Plugin resources cleaned up successfully');
+        } catch (error: any) {
+            this.logger.error(`[Cleanup] Error during cleanup: ${error.message}`);
+        }
     }
 }
 

@@ -242,23 +242,18 @@ describe('SecurityFilterPlugin', () => {
 
             await middlewareFunction(req, res, next);
 
-            // Middleware should have replaced res.json
-            expect(typeof res.json).toBe('function');
-            expect(next).toHaveBeenCalled();
+            // New behavior: middleware directly responds with blocked package info
+            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.json).toHaveBeenCalled();
 
-            // Simulate Verdaccio calling res.json with package metadata
-            res.json({
-                name: 'hawk',
-                versions: { '9.0.2': {} },
-                'dist-tags': { latest: '9.0.2' },
-            });
+            const jsonCall = res.json.mock.calls[0][0];
+            expect(jsonCall.name).toBe('hawk');
+            expect(jsonCall.versions).toEqual({});
+            expect(jsonCall.security).toBeDefined();
+            expect(jsonCall.security.blocked).toBe(true);
 
-            // Check that response was modified
-            expect(res._lastJsonBody).toBeDefined();
-            expect(res._lastJsonBody.name).toBe('hawk');
-            expect(res._lastJsonBody.versions).toEqual({});
-            expect(res._lastJsonBody.security).toBeDefined();
-            expect(res._lastJsonBody.security.blocked).toBe(true);
+            // next() should NOT be called because we sent the response
+            expect(next).not.toHaveBeenCalled();
         });
 
         it('should block packages by pattern', async () => {
