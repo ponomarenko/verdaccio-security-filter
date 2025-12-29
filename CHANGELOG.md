@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.0...v1.3.1) (2025-12-29)
+
+
+### Bug Fixes
+
+* resolve critical memory leaks causing heap exhaustion ([#22](https://github.com/ponomarenko/verdaccio-security-filter/issues/22)) ([ffaaabc](https://github.com/ponomarenko/verdaccio-security-filter/commit/ffaaabc6039069add1de574faf429f10219f363e))
+
 ## [1.3.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.2.0...v1.3.0) (2025-12-22)
 
 
