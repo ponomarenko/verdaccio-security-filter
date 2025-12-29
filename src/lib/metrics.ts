@@ -9,6 +9,7 @@ export class MetricsCollector {
     private config: MetricsConfig;
     private metricsBuffer: MetricsData[] = [];
     private readonly bufferSize = 100;
+    private readonly maxBufferSize = 500;
 
     constructor(config?: MetricsConfig) {
         this.config = {
@@ -24,6 +25,10 @@ export class MetricsCollector {
     record(event: MetricsData): void {
         if (!this.config.enabled) {
             return;
+        }
+
+        if (this.metricsBuffer.length >= this.maxBufferSize) {
+            this.flush();
         }
 
         this.metricsBuffer.push(event);
