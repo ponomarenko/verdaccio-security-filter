@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.2](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.1...v1.3.2) (2025-12-29)
+
+
+### Performance Improvements
+
+* optimize package size by 34% ([#24](https://github.com/ponomarenko/verdaccio-security-filter/issues/24)) ([a75b7a4](https://github.com/ponomarenko/verdaccio-security-filter/commit/a75b7a4162a27037a24d6820609adf85d35e9969))
+
 ## [1.3.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.0...v1.3.1) (2025-12-29)
 
 
