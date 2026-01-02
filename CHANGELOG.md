@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.3](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.2...v1.3.3) (2026-01-02)
+
+
+### Bug Fixes
+
+* resolve high-severity DoS vulnerability in qs dependency ([#26](https://github.com/ponomarenko/verdaccio-security-filter/issues/26)) ([d54300b](https://github.com/ponomarenko/verdaccio-security-filter/commit/d54300be77f707f22f21f673a109e71cba416f5d))
+
 ## [1.3.2](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.1...v1.3.2) (2025-12-29)
 
 
