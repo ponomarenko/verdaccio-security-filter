@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.4](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.3...v1.3.4) (2026-02-18)
+
+
+### Bug Fixes
+
+* **deps:** pin qs to 6.14.2 to fix CVE-2025-15284 ([#33](https://github.com/ponomarenko/verdaccio-security-filter/issues/33)) ([29b5e3a](https://github.com/ponomarenko/verdaccio-security-filter/commit/29b5e3a3a99700591f732b2972dcd4c9e127bdb5))
+
 ## [1.3.3](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.2...v1.3.3) (2026-01-02)
 
 
