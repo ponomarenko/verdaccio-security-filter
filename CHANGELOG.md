@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.5](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.4...v1.3.5) (2026-02-18)
+
+
+### Bug Fixes
+
+* **filter:** wire checkVersionAge into filter_metadata for minVersionAgeDays ([#36](https://github.com/ponomarenko/verdaccio-security-filter/issues/36)) ([bc10561](https://github.com/ponomarenko/verdaccio-security-filter/commit/bc10561daac3939cdcbd51decb0781a23a95069b)), closes [#29](https://github.com/ponomarenko/verdaccio-security-filter/issues/29)
+
 ## [1.3.4](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.3...v1.3.4) (2026-02-18)
 
 
