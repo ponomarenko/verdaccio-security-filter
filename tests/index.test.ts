@@ -373,4 +373,131 @@ describe('SecurityFilterPlugin', () => {
             );
         });
     });
+
+    describe('filter_metadata - packageAge.minVersionAgeDays', () => {
+        function makePkg(name: string, versions: Record<string, number>): any {
+            const now = new Date();
+            const time: Record<string, string> = {
+                created: new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString(),
+                modified: now.toISOString(),
+            };
+            const versionEntries: Record<string, any> = {};
+            for (const [ver, daysAgo] of Object.entries(versions)) {
+                time[ver] = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+                versionEntries[ver] = { name, version: ver };
+            }
+            return {
+                name,
+                versions: versionEntries,
+                'dist-tags': { latest: Object.keys(versions)[Object.keys(versions).length - 1] },
+                time,
+                _id: name,
+                readme: '',
+                _rev: '',
+                _attachments: {},
+                _distfiles: {},
+                _uplinks: {},
+            };
+        }
+
+        it('should filter out versions newer than minVersionAgeDays', async () => {
+            const config = {
+                mode: 'blacklist',
+                packageAge: {
+                    enabled: true,
+                    minPackageAgeDays: 0,
+                    minVersionAgeDays: 30,
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            // 1.0.0 is 60 days old (passes), 2.0.0 is 5 days old (fails)
+            const pkg = makePkg('my-lib', { '1.0.0': 60, '2.0.0': 5 });
+
+            const result = await plugin.filter_metadata(pkg);
+
+            expect(result.versions['1.0.0']).toBeDefined();
+            expect(result.versions['2.0.0']).toBeUndefined();
+        });
+
+        it('should remove dist-tags that point to a filtered version', async () => {
+            const config = {
+                mode: 'blacklist',
+                packageAge: {
+                    enabled: true,
+                    minPackageAgeDays: 0,
+                    minVersionAgeDays: 30,
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            const pkg = makePkg('my-lib', { '1.0.0': 60, '2.0.0': 5 });
+            // latest points to 2.0.0 which will be filtered
+            pkg['dist-tags'] = { latest: '2.0.0', stable: '1.0.0' };
+
+            const result = await plugin.filter_metadata(pkg);
+
+            expect(result['dist-tags']['latest']).toBeUndefined();
+            expect(result['dist-tags']['stable']).toBe('1.0.0');
+        });
+
+        it('should allow all versions when all pass minVersionAgeDays', async () => {
+            const config = {
+                mode: 'blacklist',
+                packageAge: {
+                    enabled: true,
+                    minPackageAgeDays: 0,
+                    minVersionAgeDays: 3,
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            const pkg = makePkg('my-lib', { '1.0.0': 10, '1.0.1': 5 });
+
+            const result = await plugin.filter_metadata(pkg);
+
+            expect(result.versions['1.0.0']).toBeDefined();
+            expect(result.versions['1.0.1']).toBeDefined();
+        });
+
+        it('should only warn in warnOnly mode without removing versions', async () => {
+            const config = {
+                mode: 'blacklist',
+                packageAge: {
+                    enabled: true,
+                    minPackageAgeDays: 0,
+                    minVersionAgeDays: 30,
+                    warnOnly: true,
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            const pkg = makePkg('my-lib', { '1.0.0': 60, '2.0.0': 1 });
+
+            const result = await plugin.filter_metadata(pkg);
+
+            // warnOnly: both versions should survive
+            expect(result.versions['1.0.0']).toBeDefined();
+            expect(result.versions['2.0.0']).toBeDefined();
+        });
+
+        it('should not filter versions when minVersionAgeDays is not set', async () => {
+            const config = {
+                mode: 'blacklist',
+                packageAge: {
+                    enabled: true,
+                    minPackageAgeDays: 0,
+                    // no minVersionAgeDays
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            const pkg = makePkg('my-lib', { '1.0.0': 60, '2.0.0': 1 });
+
+            const result = await plugin.filter_metadata(pkg);
+
+            expect(result.versions['1.0.0']).toBeDefined();
+            expect(result.versions['2.0.0']).toBeDefined();
+        });
+    });
 });

@@ -331,7 +331,8 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
      * This provides CVE, License, and Age checking when metadata is available
      */
     public async filter_metadata(packageInfo: Package): Promise<Package> {
-        const packageName = packageInfo.name;
+        let pkg = packageInfo;
+        const packageName = pkg.name;
         this.logger.info(`[filter_metadata] --> Processing: ${packageName}`);
 
         try {
@@ -343,7 +344,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
                 // Return empty versions with security field
                 return {
-                    ...packageInfo,
+                    ...pkg,
                     versions: {},
                     'dist-tags': {},
                     security: {
@@ -362,7 +363,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
             // 2. CVE Check - check versions in controlled batches
             if (this.config.cveCheck?.enabled) {
-                const versions = Object.keys(packageInfo.versions || {});
+                const versions = Object.keys(pkg.versions || {});
                 const vulnerableVersions: string[] = [];
 
                 const BATCH_SIZE = 10;
@@ -390,7 +391,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     this.metrics.recordBlock(packageName, '*', reason);
 
                     return {
-                        ...packageInfo,
+                        ...pkg,
                         versions: {},
                         'dist-tags': {},
                         security: {
@@ -409,9 +410,9 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
             // 3. License Check - check latest version
             if (this.config.licenses && this.config.licenses.allowed && this.config.licenses.allowed.length > 0) {
-                const latestVersion = packageInfo['dist-tags']?.latest;
-                if (latestVersion && packageInfo.versions?.[latestVersion]) {
-                    const versionData = packageInfo.versions[latestVersion];
+                const latestVersion = pkg['dist-tags']?.latest;
+                if (latestVersion && pkg.versions?.[latestVersion]) {
+                    const versionData = pkg.versions[latestVersion];
                     const licenseResult = this.licenseChecker.checkLicense(versionData);
 
                     if (!licenseResult.allowed) {
@@ -419,7 +420,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         this.metrics.recordBlock(packageName, '*', licenseResult.reason || 'License not allowed');
 
                         return {
-                            ...packageInfo,
+                            ...pkg,
                             versions: {},
                             'dist-tags': {},
                             security: {
@@ -439,13 +440,14 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
             // 4. Package Age Check
             if (this.config.packageAge?.enabled) {
-                const ageResult = this.packageAgeChecker.checkPackageAge(packageInfo);
+                // 4a. Check overall package age (minPackageAgeDays)
+                const ageResult = this.packageAgeChecker.checkPackageAge(pkg);
                 if (!ageResult.allowed && !ageResult.warnOnly) {
                     this.logger.warn(`[filter_metadata] AGE BLOCKED: ${packageName} - ${ageResult.reason}`);
                     this.metrics.recordBlock(packageName, '*', ageResult.reason || 'Package too new');
 
                     return {
-                        ...packageInfo,
+                        ...pkg,
                         versions: {},
                         'dist-tags': {},
                         security: {
@@ -462,13 +464,50 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 } else if (!ageResult.allowed && ageResult.warnOnly) {
                     this.logger.warn(`[filter_metadata] AGE WARNING: ${packageName} - ${ageResult.reason} (warn-only mode)`);
                 }
+
+                // 4b. Check per-version age (minVersionAgeDays) — filter out versions that are too new
+                if (this.config.packageAge.minVersionAgeDays) {
+                    const filteredVersions = { ...pkg.versions };
+                    const removedVersions: string[] = [];
+
+                    for (const version of Object.keys(filteredVersions)) {
+                        const versionAgeResult = this.packageAgeChecker.checkVersionAge(pkg, version);
+                        if (!versionAgeResult.allowed && !versionAgeResult.warnOnly) {
+                            this.logger.warn(`[filter_metadata] VERSION AGE FILTERED: ${packageName}@${version} - ${versionAgeResult.reason}`);
+                            this.metrics.recordBlock(packageName, version, versionAgeResult.reason || 'Version too new');
+                            delete filteredVersions[version];
+                            removedVersions.push(version);
+                        } else if (!versionAgeResult.allowed && versionAgeResult.warnOnly) {
+                            this.logger.warn(`[filter_metadata] VERSION AGE WARNING: ${packageName}@${version} - ${versionAgeResult.reason} (warn-only mode)`);
+                        }
+                    }
+
+                    if (removedVersions.length > 0) {
+                        this.logger.info(`[filter_metadata] Removed ${removedVersions.length} too-new version(s) from ${packageName}: ${removedVersions.join(', ')}`);
+
+                        // Also remove filtered versions from dist-tags
+                        const filteredDistTags = { ...pkg['dist-tags'] };
+                        for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
+                            if (removedVersions.includes(tagVersion)) {
+                                delete filteredDistTags[tag];
+                                this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to filtered version ${tagVersion}`);
+                            }
+                        }
+
+                        pkg = {
+                            ...pkg,
+                            versions: filteredVersions,
+                            'dist-tags': filteredDistTags,
+                        };
+                    }
+                }
             }
 
             // 5. Author Filter Check
             if (this.config.authorFilter?.enabled) {
-                const latestVersion = packageInfo['dist-tags']?.latest;
-                if (latestVersion && packageInfo.versions?.[latestVersion]) {
-                    const versionData = packageInfo.versions[latestVersion];
+                const latestVersion = pkg['dist-tags']?.latest;
+                if (latestVersion && pkg.versions?.[latestVersion]) {
+                    const versionData = pkg.versions[latestVersion];
                     const authorResult = this.authorChecker.checkAuthor(versionData);
 
                     if (!authorResult.allowed && !this.config.authorFilter.warnOnly) {
@@ -486,7 +525,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         });
 
                         return {
-                            ...packageInfo,
+                            ...pkg,
                             versions: {},
                             'dist-tags': {},
                             security: {
@@ -508,7 +547,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             }
 
             this.logger.info(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
-            return packageInfo;
+            return pkg;
 
         } catch (error: any) {
             this.logger.error(`[filter_metadata] Error processing ${packageName}: ${error.message}`);
@@ -519,7 +558,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 this.metrics.recordBlock(packageName, '*', `Error during processing: ${error.message}`);
 
                 return {
-                    ...packageInfo,
+                    ...packageInfo,  // use original on error path
                     versions: {},
                     'dist-tags': {},
                     security: {
@@ -535,7 +574,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             }
 
             this.logger.warn(`[filter_metadata] Error handling: fail-open - ALLOWING ${packageName}`);
-            return packageInfo;
+            return packageInfo;  // use original on error path
         }
     }
 
