@@ -54,7 +54,8 @@
     "typescript-eslint": "^8.0.0"
   },
   "overrides": {
-    "qs": "6.14.2"
+    "qs": "6.14.2",
+    "@cypress/request": "latest"
   },
   "author": {
     "name": "Vitaliy Ponomarenko",
