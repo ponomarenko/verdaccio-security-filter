@@ -281,6 +281,7 @@ filters:
       autoBlock: true
       updateInterval: 24          # hours
       cacheDir: ./.security-cache
+      cacheMaxItems: 1000         # package cache entries
 
     # License compliance
     licenses:
@@ -433,6 +434,7 @@ middlewares:
 | `cveCheck.autoBlock` | `boolean` | `false` | Auto-block vulnerable packages |
 | `cveCheck.updateInterval` | `number` | `24` | Cache update interval (hours) |
 | `cveCheck.cacheDir` | `string` | `./.security-cache` | Cache directory path |
+| `cveCheck.cacheMaxItems` | `number` | `1000` | Maximum number of package cache entries |
 
 ### License Options
 
@@ -667,6 +669,7 @@ cveCheck:
   severity: [high, critical]
   autoBlock: true
   updateInterval: 12
+  cacheMaxItems: 1000
 ```
 
 ### 6. Block Recently Published Packages

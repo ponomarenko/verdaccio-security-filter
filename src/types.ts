@@ -17,6 +17,7 @@ export interface CVECheckConfig {
     autoBlock: boolean;
     updateInterval?: number; // hours
     cacheDir?: string;
+    cacheMaxItems?: number; // Maximum number of package cache entries
 }
 
 export interface WhitelistConfig {
