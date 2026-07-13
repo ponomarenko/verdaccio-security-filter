@@ -58,7 +58,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         this.whitelistChecker = new WhitelistChecker(this.config.whitelist);
 
         // Initialize security checkers
-        this.cveChecker = new CVEChecker(this.config.cveCheck);
+        this.cveChecker = new CVEChecker(this.config.cveCheck, this.logger);
         this.licenseChecker = new LicenseChecker(this.config.licenses);
         this.packageAgeChecker = new PackageAgeChecker(this.config.packageAge);
         this.authorChecker = new AuthorChecker(this.config.authorFilter);
@@ -335,221 +335,229 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         const packageName = pkg.name;
         this.logger.info(`[filter_metadata] --> Processing: ${packageName}`);
 
-        try {
-            // 1. Whitelist/blacklist check (basic filtering)
-            const blockResult = await this._checkPackageBlock(packageName);
-            if (blockResult.blocked) {
+    try {
+      // 1. Whitelist/blacklist check (basic filtering)
+      const blockResult = await this._checkPackageBlock(packageName);
+      if (blockResult.blocked) {
                 this.logger.warn(`[filter_metadata] BLOCKED: ${packageName}@* - ${blockResult.reason}`);
-                this.metrics.recordBlock(packageName, '*', blockResult.reason);
+        this.metrics.recordBlock(packageName, '*', blockResult.reason);
 
-                // Return empty versions with security field
-                return {
-                    ...pkg,
-                    versions: {},
-                    'dist-tags': {},
-                    security: {
-                        blocked: true,
-                        reason: blockResult.reason,
-                        plugin: {
-                            name: 'verdaccio-security-filter',
-                            version: '2.0.0',
-                            mode: this.config.mode || 'blacklist',
-                        },
-                        blockedAt: new Date().toISOString(),
-                        rules: this._getAppliedRules(packageName),
-                    }
-                } as Package;
+        // Return empty versions with security field
+        return {
+          ...pkg,
+          versions: {},
+          'dist-tags': {},
+          security: {
+            blocked: true,
+            reason: blockResult.reason,
+            plugin: {
+              name: 'verdaccio-security-filter',
+              version: '2.0.0',
+              mode: this.config.mode || 'blacklist',
+            },
+            blockedAt: new Date().toISOString(),
+            rules: this._getAppliedRules(packageName),
+          }
+        } as Package;
+      }
+
+      // 2. CVE Check - query once per package and evaluate all versions from cached OSV data
+      if (this.config.cveCheck?.enabled) {
+        const versions = Object.keys(pkg.versions || {});
+        const vulnerableVersions: string[] = [];
+
+        if (versions.length > 0) {
+          try {
+            const results = await this.cveChecker.checkPackage(
+              packageName,
+              versions,
+            );
+
+            results.forEach((result) => {
+              if (result.vulnerabilities.length > 0) {
+                vulnerableVersions.push(result.version);
+                this.logger.warn(
+                  `[filter_metadata] CVE found in ${packageName}@${result.version}: ${result.vulnerabilities.length} vulnerabilities`,
+                );
+              }
+            });
+          } catch (error: unknown) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            for (const version of versions) {
+              this.logger.error(
+                `[filter_metadata] CVE check failed for ${packageName}@${version}: ${message}`,
+              );
+            }
+          }
+        }
+
+        // If configured to auto-block and vulnerabilities found
+        if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
+          const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
+          this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
+          this.metrics.recordBlock(packageName, '*', reason);
+
+          return {
+            ...pkg,
+            versions: {},
+            'dist-tags': {},
+            security: {
+              blocked: true,
+              reason,
+              vulnerableVersions,
+              plugin: {
+                name: 'verdaccio-security-filter',
+                version: '2.0.0',
+              },
+              blockedAt: new Date().toISOString(),
+            }
+          } as Package;
+        }
+      }
+
+      // 3. License Check - check latest version
+      if (this.config.licenses && this.config.licenses.allowed && this.config.licenses.allowed.length > 0) {
+        const latestVersion = pkg['dist-tags']?.latest;
+        if (latestVersion && pkg.versions?.[latestVersion]) {
+          const versionData = pkg.versions[latestVersion];
+          const licenseResult = this.licenseChecker.checkLicense(versionData);
+
+          if (!licenseResult.allowed) {
+            this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${licenseResult.reason}`);
+            this.metrics.recordBlock(packageName, '*', licenseResult.reason || 'License not allowed');
+
+            return {
+              ...pkg,
+              versions: {},
+              'dist-tags': {},
+              security: {
+                blocked: true,
+                reason: licenseResult.reason || 'License not allowed',
+                license: licenseResult.license,
+                plugin: {
+                  name: 'verdaccio-security-filter',
+                  version: '2.0.0',
+                },
+                blockedAt: new Date().toISOString(),
+              }
+            } as Package;
+          }
+        }
+      }
+
+      // 4. Package Age Check
+      if (this.config.packageAge?.enabled) {
+        // 4a. Check overall package age (minPackageAgeDays)
+        const ageResult = this.packageAgeChecker.checkPackageAge(pkg);
+        if (!ageResult.allowed && !ageResult.warnOnly) {
+          this.logger.warn(`[filter_metadata] AGE BLOCKED: ${packageName} - ${ageResult.reason}`);
+          this.metrics.recordBlock(packageName, '*', ageResult.reason || 'Package too new');
+
+          return {
+            ...pkg,
+            versions: {},
+            'dist-tags': {},
+            security: {
+              blocked: true,
+              reason: ageResult.reason || 'Package too new',
+              ageDays: ageResult.ageDays,
+              plugin: {
+                name: 'verdaccio-security-filter',
+                version: '2.0.0',
+              },
+              blockedAt: new Date().toISOString(),
+            }
+          } as Package;
+        } else if (!ageResult.allowed && ageResult.warnOnly) {
+          this.logger.warn(`[filter_metadata] AGE WARNING: ${packageName} - ${ageResult.reason} (warn-only mode)`);
+        }
+
+        // 4b. Check per-version age (minVersionAgeDays) — filter out versions that are too new
+        if (this.config.packageAge.minVersionAgeDays) {
+          const filteredVersions = { ...pkg.versions };
+          const removedVersions: string[] = [];
+
+          for (const version of Object.keys(filteredVersions)) {
+            const versionAgeResult = this.packageAgeChecker.checkVersionAge(pkg, version);
+            if (!versionAgeResult.allowed && !versionAgeResult.warnOnly) {
+              this.logger.warn(`[filter_metadata] VERSION AGE FILTERED: ${packageName}@${version} - ${versionAgeResult.reason}`);
+              this.metrics.recordBlock(packageName, version, versionAgeResult.reason || 'Version too new');
+              delete filteredVersions[version];
+              removedVersions.push(version);
+            } else if (!versionAgeResult.allowed && versionAgeResult.warnOnly) {
+              this.logger.warn(`[filter_metadata] VERSION AGE WARNING: ${packageName}@${version} - ${versionAgeResult.reason} (warn-only mode)`);
+            }
+          }
+
+          if (removedVersions.length > 0) {
+            this.logger.info(`[filter_metadata] Removed ${removedVersions.length} too-new version(s) from ${packageName}: ${removedVersions.join(', ')}`);
+
+            // Also remove filtered versions from dist-tags
+            const filteredDistTags = { ...pkg['dist-tags'] };
+            for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
+              if (removedVersions.includes(tagVersion)) {
+                delete filteredDistTags[tag];
+                this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to filtered version ${tagVersion}`);
+              }
             }
 
-            // 2. CVE Check - check versions in controlled batches
-            if (this.config.cveCheck?.enabled) {
-                const versions = Object.keys(pkg.versions || {});
-                const vulnerableVersions: string[] = [];
+            pkg = {
+              ...pkg,
+              versions: filteredVersions,
+              'dist-tags': filteredDistTags,
+            };
+          }
+        }
+      }
 
-                const BATCH_SIZE = 10;
-                for (let i = 0; i < versions.length; i += BATCH_SIZE) {
-                    const batch = versions.slice(i, i + BATCH_SIZE);
-                    const results = await Promise.allSettled(
-                        batch.map(version => this.cveChecker.checkPackage(packageName, version))
-                    );
+      // 5. Author Filter Check
+      if (this.config.authorFilter?.enabled) {
+        const latestVersion = pkg['dist-tags']?.latest;
+        if (latestVersion && pkg.versions?.[latestVersion]) {
+          const versionData = pkg.versions[latestVersion];
+          const authorResult = this.authorChecker.checkAuthor(versionData);
 
-                    results.forEach((result, index) => {
-                        if (result.status === 'fulfilled' && result.value.isVulnerable) {
-                            const version = batch[index];
-                            vulnerableVersions.push(version);
-                            this.logger.warn(`[filter_metadata] CVE found in ${packageName}@${version}: ${result.value.vulnerabilities.length} vulnerabilities`);
-                        } else if (result.status === 'rejected') {
-                            this.logger.error(`[filter_metadata] CVE check failed for ${packageName}@${batch[index]}: ${result.reason}`);
-                        }
-                    });
-                }
+          if (!authorResult.allowed && !this.config.authorFilter.warnOnly) {
+            this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${authorResult.reason}`);
+            this.metrics.record({
+              timestamp: new Date().toISOString(),
+              event: 'author_blocked',
+              packageName,
+              version: latestVersion,
+              reason: authorResult.reason || 'Author not allowed',
+              metadata: {
+                blockedBy: authorResult.blockedBy,
+                authorInfo: authorResult.authorInfo,
+              },
+            });
 
-                // If configured to auto-block and vulnerabilities found
-                if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
-                    const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
-                    this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
-                    this.metrics.recordBlock(packageName, '*', reason);
+            return {
+              ...pkg,
+              versions: {},
+              'dist-tags': {},
+              security: {
+                blocked: true,
+                reason: authorResult.reason || 'Author not allowed',
+                blockedBy: authorResult.blockedBy,
+                authorInfo: authorResult.authorInfo,
+                plugin: {
+                  name: 'verdaccio-security-filter',
+                  version: '2.0.0',
+                },
+                blockedAt: new Date().toISOString(),
+              }
+            } as Package;
+          } else if (!authorResult.allowed && this.config.authorFilter.warnOnly) {
+            this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName} - ${authorResult.reason} (warn-only mode)`);
+          }
+        }
+      }
 
-                    return {
-                        ...pkg,
-                        versions: {},
-                        'dist-tags': {},
-                        security: {
-                            blocked: true,
-                            reason,
-                            vulnerableVersions,
-                            plugin: {
-                                name: 'verdaccio-security-filter',
-                                version: '2.0.0',
-                            },
-                            blockedAt: new Date().toISOString(),
-                        }
-                    } as Package;
-                }
-            }
+      this.logger.info(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
+      return pkg;
 
-            // 3. License Check - check latest version
-            if (this.config.licenses && this.config.licenses.allowed && this.config.licenses.allowed.length > 0) {
-                const latestVersion = pkg['dist-tags']?.latest;
-                if (latestVersion && pkg.versions?.[latestVersion]) {
-                    const versionData = pkg.versions[latestVersion];
-                    const licenseResult = this.licenseChecker.checkLicense(versionData);
-
-                    if (!licenseResult.allowed) {
-                        this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${licenseResult.reason}`);
-                        this.metrics.recordBlock(packageName, '*', licenseResult.reason || 'License not allowed');
-
-                        return {
-                            ...pkg,
-                            versions: {},
-                            'dist-tags': {},
-                            security: {
-                                blocked: true,
-                                reason: licenseResult.reason || 'License not allowed',
-                                license: licenseResult.license,
-                                plugin: {
-                                    name: 'verdaccio-security-filter',
-                                    version: '2.0.0',
-                                },
-                                blockedAt: new Date().toISOString(),
-                            }
-                        } as Package;
-                    }
-                }
-            }
-
-            // 4. Package Age Check
-            if (this.config.packageAge?.enabled) {
-                // 4a. Check overall package age (minPackageAgeDays)
-                const ageResult = this.packageAgeChecker.checkPackageAge(pkg);
-                if (!ageResult.allowed && !ageResult.warnOnly) {
-                    this.logger.warn(`[filter_metadata] AGE BLOCKED: ${packageName} - ${ageResult.reason}`);
-                    this.metrics.recordBlock(packageName, '*', ageResult.reason || 'Package too new');
-
-                    return {
-                        ...pkg,
-                        versions: {},
-                        'dist-tags': {},
-                        security: {
-                            blocked: true,
-                            reason: ageResult.reason || 'Package too new',
-                            ageDays: ageResult.ageDays,
-                            plugin: {
-                                name: 'verdaccio-security-filter',
-                                version: '2.0.0',
-                            },
-                            blockedAt: new Date().toISOString(),
-                        }
-                    } as Package;
-                } else if (!ageResult.allowed && ageResult.warnOnly) {
-                    this.logger.warn(`[filter_metadata] AGE WARNING: ${packageName} - ${ageResult.reason} (warn-only mode)`);
-                }
-
-                // 4b. Check per-version age (minVersionAgeDays) — filter out versions that are too new
-                if (this.config.packageAge.minVersionAgeDays) {
-                    const filteredVersions = { ...pkg.versions };
-                    const removedVersions: string[] = [];
-
-                    for (const version of Object.keys(filteredVersions)) {
-                        const versionAgeResult = this.packageAgeChecker.checkVersionAge(pkg, version);
-                        if (!versionAgeResult.allowed && !versionAgeResult.warnOnly) {
-                            this.logger.warn(`[filter_metadata] VERSION AGE FILTERED: ${packageName}@${version} - ${versionAgeResult.reason}`);
-                            this.metrics.recordBlock(packageName, version, versionAgeResult.reason || 'Version too new');
-                            delete filteredVersions[version];
-                            removedVersions.push(version);
-                        } else if (!versionAgeResult.allowed && versionAgeResult.warnOnly) {
-                            this.logger.warn(`[filter_metadata] VERSION AGE WARNING: ${packageName}@${version} - ${versionAgeResult.reason} (warn-only mode)`);
-                        }
-                    }
-
-                    if (removedVersions.length > 0) {
-                        this.logger.info(`[filter_metadata] Removed ${removedVersions.length} too-new version(s) from ${packageName}: ${removedVersions.join(', ')}`);
-
-                        // Also remove filtered versions from dist-tags
-                        const filteredDistTags = { ...pkg['dist-tags'] };
-                        for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
-                            if (removedVersions.includes(tagVersion)) {
-                                delete filteredDistTags[tag];
-                                this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to filtered version ${tagVersion}`);
-                            }
-                        }
-
-                        pkg = {
-                            ...pkg,
-                            versions: filteredVersions,
-                            'dist-tags': filteredDistTags,
-                        };
-                    }
-                }
-            }
-
-            // 5. Author Filter Check
-            if (this.config.authorFilter?.enabled) {
-                const latestVersion = pkg['dist-tags']?.latest;
-                if (latestVersion && pkg.versions?.[latestVersion]) {
-                    const versionData = pkg.versions[latestVersion];
-                    const authorResult = this.authorChecker.checkAuthor(versionData);
-
-                    if (!authorResult.allowed && !this.config.authorFilter.warnOnly) {
-                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${authorResult.reason}`);
-                        this.metrics.record({
-                            timestamp: new Date().toISOString(),
-                            event: 'author_blocked',
-                            packageName,
-                            version: latestVersion,
-                            reason: authorResult.reason || 'Author not allowed',
-                            metadata: {
-                                blockedBy: authorResult.blockedBy,
-                                authorInfo: authorResult.authorInfo,
-                            },
-                        });
-
-                        return {
-                            ...pkg,
-                            versions: {},
-                            'dist-tags': {},
-                            security: {
-                                blocked: true,
-                                reason: authorResult.reason || 'Author not allowed',
-                                blockedBy: authorResult.blockedBy,
-                                authorInfo: authorResult.authorInfo,
-                                plugin: {
-                                    name: 'verdaccio-security-filter',
-                                    version: '2.0.0',
-                                },
-                                blockedAt: new Date().toISOString(),
-                            }
-                        } as Package;
-                    } else if (!authorResult.allowed && this.config.authorFilter.warnOnly) {
-                        this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName} - ${authorResult.reason} (warn-only mode)`);
-                    }
-                }
-            }
-
-            this.logger.info(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
-            return pkg;
-
-        } catch (error: any) {
+    } catch (error: any) {
             this.logger.error(`[filter_metadata] Error processing ${packageName}: ${error.message}`);
             const errorStrategy = this.config.errorHandling?.onFilterError || 'fail-open';
 

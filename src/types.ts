@@ -8,9 +8,11 @@ export interface VersionRangeRule {
     reason?: string;
 }
 
+export type CVEDatabase = 'osv' | 'snyk' | 'github'
+
 export interface CVECheckConfig {
     enabled: boolean;
-    databases: ('osv' | 'snyk' | 'github')[];
+    databases: CVEDatabase[];
     severity: ('low' | 'medium' | 'high' | 'critical')[];
     autoBlock: boolean;
     updateInterval?: number; // hours
@@ -127,6 +129,7 @@ export interface CVEVulnerability {
     severity: 'low' | 'medium' | 'high' | 'critical';
     summary: string;
     affectedVersions: string[];
+    introducedVersion?: string;
     fixedVersion?: string;
     publishedDate: string;
     source: string;
@@ -136,8 +139,6 @@ export interface CVECheckResult {
     package: string;
     version: string;
     vulnerabilities: CVEVulnerability[];
-    isVulnerable: boolean;
-    checkedAt: string;
 }
 
 export interface MetricsData {
