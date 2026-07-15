@@ -1,5 +1,10 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import SecurityFilterPlugin from '../src/index';
 import { PluginOptions } from '@verdaccio/types';
+
+const JS_YAML_CACHE_FIXTURE = path.join(__dirname, 'fixtures', 'js-yaml-cve-cache.json');
 
 describe('SecurityFilterPlugin', () => {
     const pluginOptions = {
@@ -498,6 +503,55 @@ describe('SecurityFilterPlugin', () => {
 
             expect(result.versions['1.0.0']).toBeDefined();
             expect(result.versions['2.0.0']).toBeDefined();
+        });
+    });
+
+    describe('filter_metadata - CVE auto-blocking', () => {
+        it('filters vulnerable versions while preserving safe versions', async () => {
+            const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'security-filter-cve-test-'));
+            const cache = JSON.parse(fs.readFileSync(JS_YAML_CACHE_FIXTURE, 'utf8'));
+            fs.writeFileSync(
+                path.join(cacheDir, 'cve-cache.json'),
+                JSON.stringify(cache),
+                'utf8',
+            );
+
+            const config = {
+                mode: 'blacklist',
+                cveCheck: {
+                    enabled: true,
+                    databases: ['osv'],
+                    severity: ['critical'],
+                    autoBlock: true,
+                    updateInterval: 24 * 365 * 100,
+                    cacheDir,
+                },
+            } as any;
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            const pkg = {
+                name: 'js-yaml',
+                versions: {
+                    '2.0.4': { name: 'js-yaml', version: '2.0.4' },
+                    '4.1.1': { name: 'js-yaml', version: '4.1.1' },
+                },
+                'dist-tags': {
+                    latest: '4.1.1',
+                    legacy: '2.0.4',
+                },
+            } as any;
+
+            try {
+                const result = await plugin.filter_metadata(pkg);
+
+                expect(result.versions).toEqual({
+                    '4.1.1': { name: 'js-yaml', version: '4.1.1' },
+                });
+                expect(result['dist-tags']).toEqual({ latest: '4.1.1' });
+                expect((result as any).security?.blocked).not.toBe(true);
+            } finally {
+                plugin.destroy();
+                fs.rmSync(cacheDir, { recursive: true, force: true });
+            }
         });
     });
 });
