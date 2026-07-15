@@ -395,24 +395,51 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         // If configured to auto-block and vulnerabilities found
         if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
           const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
-          this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
-          this.metrics.recordBlock(packageName, '*', reason);
+          const filteredVersions = { ...pkg.versions };
+          vulnerableVersions.forEach(version => delete filteredVersions[version]);
 
-          return {
-            ...pkg,
-            versions: {},
-            'dist-tags': {},
-            security: {
-              blocked: true,
-              reason,
-              vulnerableVersions,
-              plugin: {
-                name: 'verdaccio-security-filter',
-                version: '2.0.0',
-              },
-              blockedAt: new Date().toISOString(),
+          // Keep safe releases available. A package may legitimately contain
+          // old vulnerable releases alongside newer releases that satisfy the
+          // requested dependency range.
+          if (Object.keys(filteredVersions).length > 0) {
+            const filteredDistTags = { ...pkg['dist-tags'] };
+            for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
+              if (vulnerableVersions.includes(tagVersion)) {
+                delete filteredDistTags[tag];
+                this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to CVE-filtered version ${tagVersion}`);
+              }
             }
-          } as Package;
+
+            for (const version of vulnerableVersions) {
+              this.metrics.recordBlock(packageName, version, 'Version has a configured CVE severity');
+            }
+            this.logger.warn(`[filter_metadata] CVE FILTERED: ${packageName} - ${reason}`);
+
+            pkg = {
+              ...pkg,
+              versions: filteredVersions,
+              'dist-tags': filteredDistTags,
+            };
+          } else {
+            this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
+            this.metrics.recordBlock(packageName, '*', reason);
+
+            return {
+              ...pkg,
+              versions: {},
+              'dist-tags': {},
+              security: {
+                blocked: true,
+                reason,
+                vulnerableVersions,
+                plugin: {
+                  name: 'verdaccio-security-filter',
+                  version: '2.0.0',
+                },
+                blockedAt: new Date().toISOString(),
+              }
+            } as Package;
+          }
         }
       }
 
