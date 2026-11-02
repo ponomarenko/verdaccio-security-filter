@@ -233,7 +233,14 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 // Tarball URLs: /:package/-/:filename.tgz
                 // Scoped tarball URLs: /@scope/:package/-/:filename.tgz
                 // Metadata URLs: /:package or /@scope/:package
-                const urlMatch = req.url.match(/^\/(@[^/]+\/)?([^/]+)(?:\/-\/([^/]+\.tgz))?/);
+                // npm sends scoped names URL-encoded (/@scope%2fname), so decode the path first
+                let path = req.url.split('?')[0];
+                try {
+                    path = decodeURIComponent(path);
+                } catch {
+                    // malformed encoding: match the raw path
+                }
+                const urlMatch = path.match(/^\/(@[^/]+\/)?([^/]+)(?:\/-\/([^/]+\.tgz))?/);
 
                 if (!urlMatch) {
                     // Not a package-related request, pass through

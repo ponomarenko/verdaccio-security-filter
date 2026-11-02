@@ -256,6 +256,22 @@ describe('SecurityFilterPlugin', () => {
             expect(next).not.toHaveBeenCalled();
         });
 
+        it('should decode URL-encoded scoped package names in metadata requests', async () => {
+            const plugin = new SecurityFilterPlugin(
+                { mode: 'whitelist', whitelist: { packages: ['lodash'], patterns: [] } } as any,
+                pluginOptions
+            );
+
+            let middlewareFunction: any;
+            const app = { use: jest.fn((fn) => { middlewareFunction = fn; }) } as any;
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+            await middlewareFunction({ url: '/@vueuse%2fmetadata?write=true' } as any, res, jest.fn());
+
+            expect(res.json.mock.calls[0][0].name).toBe('@vueuse/metadata');
+        });
+
         it('should block packages by pattern', async () => {
             const config = {
                 mode: 'blacklist',
