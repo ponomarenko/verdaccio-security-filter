@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.6](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.5...v1.3.6) (2026-11-02)
+
+
+### Bug Fixes
+
+* **middleware:** decode URL-encoded scoped package names ([#41](https://github.com/ponomarenko/verdaccio-security-filter/issues/41)) ([319b69a](https://github.com/ponomarenko/verdaccio-security-filter/commit/319b69a263f954d6a929b4ec92195830f6c09e40)), closes [#30](https://github.com/ponomarenko/verdaccio-security-filter/issues/30)
+
 ## [1.3.5](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.4...v1.3.5) (2026-02-18)
 
 
