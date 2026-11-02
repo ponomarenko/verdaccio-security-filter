@@ -229,6 +229,12 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         // Middleware to intercept all package requests
         app.use(async (req: Request, res: Response, next: NextFunction): Promise<void> => {
             try {
+                // Only reads are filtered; awaiting before next() on POST/PUT breaks body parsing (#31).
+                // `/-/` is Verdaccio's own API (login, tokens, search), not a package.
+                if ((req.method !== 'GET' && req.method !== 'HEAD') || req.url.startsWith('/-/')) {
+                    return next();
+                }
+
                 // Extract package name and version from URL
                 // Tarball URLs: /:package/-/:filename.tgz
                 // Scoped tarball URLs: /@scope/:package/-/:filename.tgz

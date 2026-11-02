@@ -144,6 +144,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const req = {
+                method: 'GET',
                 url: '/hawk/-/hawk-9.0.2.tgz',
             } as any;
 
@@ -188,6 +189,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const req = {
+                method: 'GET',
                 url: '/lodash/-/lodash-4.17.21.tgz',
             } as any;
 
@@ -226,6 +228,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const req = {
+                method: 'GET',
                 url: '/hawk',
             } as any;
 
@@ -267,9 +270,30 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
-            await middlewareFunction({ url: '/@vueuse%2fmetadata?write=true' } as any, res, jest.fn());
+            await middlewareFunction({ method: 'GET', url: '/@vueuse%2fmetadata?write=true' } as any, res, jest.fn());
 
             expect(res.json.mock.calls[0][0].name).toBe('@vueuse/metadata');
+        });
+
+        it.each([
+            ['POST', '/-/verdaccio/sec/login'],
+            ['PUT', '/@scope%2fname'],
+            ['GET', '/-/v1/search'],
+        ])('should pass through %s %s untouched', async (method, url) => {
+            const plugin = new SecurityFilterPlugin(
+                { mode: 'whitelist', whitelist: { packages: [], patterns: [] } } as any,
+                pluginOptions
+            );
+            let middlewareFunction: any;
+            const app = { use: jest.fn((fn) => { middlewareFunction = fn; }) } as any;
+            plugin.register_middlewares(app, {} as any, {} as any);
+
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+            const next = jest.fn();
+            await middlewareFunction({ method, url } as any, res, next);
+
+            expect(next).toHaveBeenCalledWith();
+            expect(res.json).not.toHaveBeenCalled();
         });
 
         it('should block packages by pattern', async () => {
@@ -290,6 +314,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const req = {
+                method: 'GET',
                 url: '/evil-package/-/evil-package-1.0.0.tgz',
             } as any;
 
@@ -329,6 +354,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const req = {
+                method: 'GET',
                 url: '/@malicious/package/-/package-1.0.0.tgz',
             } as any;
 
@@ -368,6 +394,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares(app, {} as any, {} as any);
 
             const req = {
+                method: 'GET',
                 url: '/lodash/-/lodash-4.17.20.tgz',
             } as any;
 
