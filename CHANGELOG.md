@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.7](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.6...v1.3.7) (2026-11-02)
+
+
+### Bug Fixes
+
+* **middleware:** skip non-read requests and Verdaccio API paths ([#43](https://github.com/ponomarenko/verdaccio-security-filter/issues/43)) ([8f68f06](https://github.com/ponomarenko/verdaccio-security-filter/commit/8f68f0638121da3bbb1b3515ffb911606dfa0bfd)), closes [#31](https://github.com/ponomarenko/verdaccio-security-filter/issues/31)
+
 ## [1.3.6](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.5...v1.3.6) (2026-11-02)
 
 
