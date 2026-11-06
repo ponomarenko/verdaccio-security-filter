@@ -388,6 +388,30 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 // other versions of the same package may not be affected.
                 if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
                     const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
+
+                    // Every version is vulnerable - nothing safe remains, so block
+                    // the whole package exactly as before.
+                    if (vulnerableVersions.length === versions.length) {
+                        this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
+                        this.metrics.recordBlock(packageName, '*', reason);
+
+                        return {
+                            ...pkg,
+                            versions: {},
+                            'dist-tags': {},
+                            security: {
+                                blocked: true,
+                                reason,
+                                vulnerableVersions,
+                                plugin: {
+                                    name: 'verdaccio-security-filter',
+                                    version: '2.0.0',
+                                },
+                                blockedAt: new Date().toISOString(),
+                            }
+                        } as Package;
+                    }
+
                     this.logger.warn(`[filter_metadata] CVE FILTERED: ${packageName} - ${reason}: ${vulnerableVersions.join(', ')}`);
 
                     const filteredVersions = { ...pkg.versions };

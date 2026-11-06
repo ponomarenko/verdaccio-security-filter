@@ -575,5 +575,32 @@ describe('SecurityFilterPlugin', () => {
             expect(result['dist-tags']['latest']).toBeUndefined();
             expect(result['dist-tags']['stable']).toBe('1.0.0');
         });
+
+        it('should block the whole package when every version is vulnerable', async () => {
+            const config = {
+                mode: 'blacklist',
+                cveCheck: {
+                    enabled: true,
+                    autoBlock: true,
+                    severity: ['high', 'critical'],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            stubCveChecker(plugin, ['1.0.0', '2.0.0']);
+            const recordBlock = jest.spyOn((plugin as any).metrics, 'recordBlock');
+
+            const pkg = makePkg('my-lib', ['1.0.0', '2.0.0']);
+
+            const result: any = await plugin.filter_metadata(pkg);
+
+            expect(result.versions).toEqual({});
+            expect(result['dist-tags']).toEqual({});
+            expect(result.security).toEqual(expect.objectContaining({
+                blocked: true,
+                vulnerableVersions: expect.arrayContaining(['1.0.0', '2.0.0']),
+            }));
+            expect(recordBlock).toHaveBeenCalledWith('my-lib', '*', expect.any(String));
+        });
     });
 });
