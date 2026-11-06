@@ -430,9 +430,11 @@ middlewares:
 | `cveCheck.enabled` | `boolean` | `false` | Enable CVE scanning |
 | `cveCheck.databases` | `string[]` | `['osv']` | Databases: `osv`, `snyk`, `github` |
 | `cveCheck.severity` | `string[]` | `['high', 'critical']` | Severity levels to check |
-| `cveCheck.autoBlock` | `boolean` | `false` | Auto-block vulnerable packages |
+| `cveCheck.autoBlock` | `boolean` | `false` | Remove vulnerable versions from metadata (whole package blocked if every version is vulnerable) |
 | `cveCheck.updateInterval` | `number` | `24` | Cache update interval (hours) |
 | `cveCheck.cacheDir` | `string` | `./.security-cache` | Cache directory path |
+
+> **Note on `autoBlock` and dist-tags:** only the vulnerable versions are removed; unaffected versions stay installable. Any dist-tag (including `latest`) that points to a removed version is dropped and **not** re-pointed to another version. If `latest` is vulnerable, `npm install <pkg>` without a version or range will fail - install an explicit safe version or range instead (e.g. `npm install <pkg>@^1.2.0`).
 
 ### License Options
 
