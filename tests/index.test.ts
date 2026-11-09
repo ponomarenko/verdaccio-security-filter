@@ -747,4 +747,87 @@ describe('SecurityFilterPlugin', () => {
             expect(result.security.plugin.version).toBe(require('../package.json').version);
         });
     });
+
+    describe('filter_metadata - license and author checks on every version', () => {
+        const metadata = (versions: Record<string, any>, latest: string): any => ({
+            name: 'my-lib',
+            versions: Object.fromEntries(Object.entries(versions).map(([v, extra]) => [v, { name: 'my-lib', version: v, ...extra }])),
+            'dist-tags': { latest },
+        });
+        const licenses = { allowed: ['MIT'], blocked: [], requireLicense: true };
+        const authorFilter = { enabled: true, blockedEmailDomains: ['evil.example'] };
+        const evil = { author: { name: 'Mallory', email: 'mallory@evil.example' } };
+        const good = { author: { name: 'Alice', email: 'alice@good.example' } };
+
+        it('should remove only the versions with a disallowed license', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({
+                '1.0.0': { license: 'GPL-3.0' }, '2.0.0': { license: 'MIT' }, '3.0.0': {},
+            }, '2.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['2.0.0']);
+            expect(result.security).toBeUndefined();
+        });
+
+        it('should keep older versions when only the latest has a disallowed license', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({
+                '1.0.0': { license: 'MIT' }, '2.0.0': { license: 'GPL-3.0' },
+            }, '2.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['1.0.0']);
+            expect(result['dist-tags']).toEqual({});
+        });
+
+        it('should block the whole package when no version has an allowed license', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({
+                '1.0.0': { license: 'GPL-3.0' }, '2.0.0': { license: 'AGPL-3.0' },
+            }, '2.0.0'));
+
+            expect(result.versions).toEqual({});
+            expect(result.security).toEqual(expect.objectContaining({ blocked: true, license: 'AGPL-3.0' }));
+        });
+
+        it('should still check licenses when the latest dist-tag is missing', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses } as any, pluginOptions);
+            const pkg = metadata({ '1.0.0': { license: 'GPL-3.0' }, '2.0.0': { license: 'MIT' } }, '2.0.0');
+            pkg['dist-tags'] = {};
+
+            const result: any = await plugin.filter_metadata(pkg);
+
+            expect(Object.keys(result.versions)).toEqual(['2.0.0']);
+        });
+
+        it('should remove only the versions published by a blocked author', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', authorFilter } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({ '1.0.0': good, '2.0.0': evil, '3.0.0': good }, '3.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['1.0.0', '3.0.0']);
+        });
+
+        it('should block the whole package when every version has a blocked author', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', authorFilter } as any, pluginOptions);
+            const record = jest.spyOn((plugin as any).metrics, 'record');
+
+            const result: any = await plugin.filter_metadata(metadata({ '1.0.0': evil, '2.0.0': evil }, '2.0.0'));
+
+            expect(result.versions).toEqual({});
+            expect(result.security).toEqual(expect.objectContaining({ blocked: true, blockedBy: 'domain' }));
+            expect(record).toHaveBeenCalledTimes(1);
+            expect(record).toHaveBeenCalledWith(expect.objectContaining({ event: 'author_blocked', version: '*' }));
+        });
+
+        it('should only warn about blocked authors in warnOnly mode', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', authorFilter: { ...authorFilter, warnOnly: true } } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({ '1.0.0': good, '2.0.0': evil }, '2.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['1.0.0', '2.0.0']);
+        });
+    });
 });
