@@ -6,6 +6,7 @@ import { WhitelistConfig } from '../types';
  */
 export class WhitelistChecker {
     private config: WhitelistConfig;
+    private regexes = new Map<string, RegExp | null>();
 
     constructor(config?: WhitelistConfig) {
         this.config = {
@@ -51,15 +52,24 @@ export class WhitelistChecker {
      * Check if package name matches any whitelist pattern
      */
     private matchesPattern(packageName: string): boolean {
-        return this.config.patterns.some(pattern => {
+        return this.config.patterns.some(pattern => this.compile(pattern)?.test(packageName));
+    }
+
+    /**
+     * Compile a pattern once; an invalid one is reported once and never matches.
+     */
+    private compile(pattern: string): RegExp | null {
+        let regex = this.regexes.get(pattern);
+        if (regex === undefined) {
             try {
-                const regex = new RegExp(pattern);
-                return regex.test(packageName);
+                regex = new RegExp(pattern);
             } catch {
                 console.error(`[Whitelist] Invalid pattern: ${pattern}`);
-                return false;
+                regex = null;
             }
-        });
+            this.regexes.set(pattern, regex);
+        }
+        return regex;
     }
 
     /**

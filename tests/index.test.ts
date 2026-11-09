@@ -665,4 +665,67 @@ describe('SecurityFilterPlugin', () => {
             expect(!!result.security?.blocked).toBe(blocked);
         });
     });
+
+    describe('version rules and patterns', () => {
+        async function get(config: any, url: string) {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', ...config } as any, pluginOptions);
+            let middleware: any;
+            plugin.register_middlewares({ use: (fn: any) => { middleware = fn; } } as any, {} as any, {} as any);
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+            const next = jest.fn();
+            await middleware({ method: 'GET', url } as any, res, next);
+            return { res, next };
+        }
+
+        it.each([
+            ['foo-2@1.0.0', '/foo-2/-/foo-2-1.0.0.tgz'],
+            ['pkg@1.0.0-beta-1', '/pkg/-/pkg-1.0.0-beta-1.tgz'],
+            ['@scope/pkg@1.0.0+build.5', '/@scope/pkg/-/pkg-1.0.0+build.5.tgz'],
+        ])('should read the tarball version exactly and block %s', async (blocked, url) => {
+            const { res, next } = await get({ blockedVersions: [blocked] }, url);
+
+            expect(res.status).toHaveBeenCalledWith(403);
+            expect(next).not.toHaveBeenCalled();
+        });
+
+        it('should not block a different version of a package whose name ends in a number', async () => {
+            const { res, next } = await get({ blockedVersions: ['foo-2@1.0.0'] }, '/foo-2/-/foo-2-1.0.1.tgz');
+
+            expect(res.status).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith();
+        });
+
+        it('should skip an invalid blocked pattern instead of failing every request', async () => {
+            const { res, next } = await get({ blockedPatterns: ['([', '^evil-'] }, '/lodash');
+            expect(res.status).not.toHaveBeenCalled();
+            expect(next).toHaveBeenCalledWith();
+
+            const blocked = await get({ blockedPatterns: ['([', '^evil-'] }, '/evil-pkg/-/evil-pkg-1.0.0.tgz');
+            expect(blocked.res.status).toHaveBeenCalledWith(403);
+        });
+
+        it.each(['block', 'fallback'])('should hide versions matched by a %s rule or blockedVersions from metadata', async (strategy) => {
+            const plugin = new SecurityFilterPlugin({
+                mode: 'blacklist',
+                blockedVersions: ['my-lib@3.0.0'],
+                versionRangeRules: [{ package: 'my-lib', range: '<2.0.0', strategy }],
+            } as any, pluginOptions);
+            const versions = Object.fromEntries(['1.0.0', '1.5.0', '2.0.0', '3.0.0'].map(v => [v, { name: 'my-lib', version: v }]));
+
+            const result: any = await plugin.filter_metadata({
+                name: 'my-lib', versions, 'dist-tags': { latest: '3.0.0', stable: '2.0.0' },
+            } as any);
+
+            expect(Object.keys(result.versions)).toEqual(['2.0.0']);
+            expect(result['dist-tags']).toEqual({ stable: '2.0.0' });
+        });
+
+        it('should report the real plugin version for a blocked package', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', blockedPatterns: ['^evil-'] } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata({ name: 'evil-pkg', versions: {}, 'dist-tags': {} } as any);
+
+            expect(result.security.plugin.version).toBe(require('../package.json').version);
+        });
+    });
 });

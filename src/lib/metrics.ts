@@ -10,6 +10,8 @@ export class MetricsCollector {
     private metricsBuffer: MetricsData[] = [];
     private readonly bufferSize = 100;
     private readonly maxBufferSize = 500;
+    private readonly flushIntervalMs = 10_000;
+    private flushTimer: NodeJS.Timeout | null = null;
 
     constructor(config?: MetricsConfig) {
         this.config = {
@@ -17,6 +19,12 @@ export class MetricsCollector {
             output: config?.output || 'stdout',
             filePath: config?.filePath || './security-metrics.json',
         };
+
+        if (this.config.enabled) {
+            // Verdaccio never calls destroy(), so without this a quiet registry keeps events in memory forever.
+            this.flushTimer = setInterval(() => this.flush(), this.flushIntervalMs);
+            this.flushTimer.unref();
+        }
     }
 
     /**
@@ -187,6 +195,10 @@ export class MetricsCollector {
      * Cleanup - flush remaining metrics
      */
     cleanup(): void {
+        if (this.flushTimer) {
+            clearInterval(this.flushTimer);
+            this.flushTimer = null;
+        }
         this.flush();
     }
 }

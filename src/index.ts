@@ -1,5 +1,7 @@
 import { IPluginMiddleware, IPluginStorageFilter, PluginOptions, IBasicAuth, IStorageManager, Package } from '@verdaccio/types';
 import * as semver from 'semver';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { Application, Request, Response, NextFunction } from 'express';
 
 import { SecurityConfig, SecurityRules, VersionRangeRule } from './types';
@@ -10,6 +12,9 @@ import { CVEChecker } from './lib/cve-checker';
 import { LicenseChecker } from './lib/license-checker';
 import { PackageAgeChecker } from './lib/package-age-checker';
 import { AuthorChecker } from './lib/author-checker';
+
+// package.json sits next to both src/ and build/, and is always part of the published package.
+const PLUGIN_VERSION: string = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
 
 /**
  * Security Filter Plugin for Verdaccio
@@ -24,6 +29,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     public logger: SecurityLogger;
     public config: SecurityConfig;
     private readonly securityRules: SecurityRules;
+    private readonly blockedPatternRegexes: RegExp[];
     private readonly metrics: MetricsCollector;
     private readonly whitelistChecker: WhitelistChecker;
     private readonly cveChecker: CVEChecker;
@@ -75,6 +81,16 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             versionRangeRules: this._parseVersionRangeRules(this.config.versionRangeRules || [])
         };
 
+        // Compiled once: the patterns run on every request, and a bad one must not turn into a 500.
+        this.blockedPatternRegexes = this.securityRules.blockedPatterns.flatMap(pattern => {
+            try {
+                return [new RegExp(pattern)];
+            } catch (error: any) {
+                this.logger.warn(`Invalid blocked pattern "${pattern}", skipping: ${error.message}`);
+                return [];
+            }
+        });
+
         this._logInitialization();
     }
 
@@ -89,9 +105,8 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 return null;
             }
 
-            if (rule.strategy === 'fallback' && !rule.fallbackVersion) {
-                this.logger.warn(`Fallback strategy requires fallbackVersion for ${rule.package}, skipping`);
-                return null;
+            if (rule.strategy === 'fallback') {
+                this.logger.warn(`Strategy "fallback" for ${rule.package} is deprecated and works like "block": matching versions are hidden, so npm resolves to the highest allowed one`);
             }
 
             // Validate semver range
@@ -167,10 +182,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
      * @private
      */
     private _isBlockedByPattern(packageName: string): boolean {
-        return this.securityRules.blockedPatterns.some(pattern => {
-            const regex = new RegExp(pattern);
-            return regex.test(packageName);
-        });
+        return this.blockedPatternRegexes.some(regex => regex.test(packageName));
     }
 
     /**
@@ -262,10 +274,14 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 let version: string | undefined;
                 if (tarballFile) {
                     // This is a tarball download request - block it immediately
-                    const versionMatch = tarballFile.match(/-([\d.]+(?:-[a-zA-Z0-9.]+)?)\.tgz$/);
-                    version = versionMatch ? versionMatch[1] : undefined;
+                    // npm names tarballs <unscoped name>-<version>.tgz. Cutting the known name off is
+                    // exact; guessing with a regex misreads names like "foo-2" and versions like "1.0.0-beta-1".
+                    const filePrefix = `${urlMatch[2]}-`;
+                    version = tarballFile.startsWith(filePrefix)
+                        ? tarballFile.slice(filePrefix.length, -'.tgz'.length)
+                        : undefined;
 
-                    this.logger.info(`[Middleware] TARBALL REQUEST: ${packageName}@${version || 'unknown'}`);
+                    this.logger.debug(`[Middleware] TARBALL REQUEST: ${packageName}@${version || 'unknown'}`);
 
                     // Apply all security checks for tarball downloads
                     const blockResult = await this._checkPackageBlock(packageName, version);
@@ -285,10 +301,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         return;
                     }
 
-                    this.logger.info(`[Middleware] [OK] ALLOWED TARBALL: ${packageName}@${version || 'unknown'}`);
+                    this.logger.debug(`[Middleware] [OK] ALLOWED TARBALL: ${packageName}@${version || 'unknown'}`);
                 } else {
                     // This is a metadata request - intercept response and modify it
-                    this.logger.info(`[Middleware] METADATA REQUEST: ${packageName} - will intercept response`);
+                    this.logger.debug(`[Middleware] METADATA REQUEST: ${packageName} - will intercept response`);
 
                     // Check if package should be blocked
                     const blockResult = await this._checkPackageBlock(packageName);
@@ -305,7 +321,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                                 reason: blockResult.reason,
                                 plugin: {
                                     name: 'verdaccio-security-filter',
-                                    version: '1.0.0',
+                                    version: PLUGIN_VERSION,
                                     mode: this.config.mode || 'blacklist',
                                 },
                                 blockedAt: new Date().toISOString(),
@@ -324,7 +340,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         res.status(200).json(blockedResponse);
                         return;
                     } else {
-                        this.logger.info(`[Middleware] [OK] ALLOWED METADATA: ${packageName}`);
+                        this.logger.debug(`[Middleware] [OK] ALLOWED METADATA: ${packageName}`);
                     }
                 }
 
@@ -340,13 +356,63 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     }
 
     /**
+     * Metadata for a fully blocked package: no versions, plus the reason.
+     * @private
+     */
+    private _blockedPackage(pkg: Package, reason: string, extra: Record<string, any> = {}): Package {
+        return {
+            ...pkg,
+            versions: {},
+            'dist-tags': {},
+            security: {
+                blocked: true,
+                reason,
+                ...extra,
+                plugin: {
+                    name: 'verdaccio-security-filter',
+                    version: PLUGIN_VERSION,
+                    mode: this.config.mode || 'blacklist',
+                },
+                blockedAt: new Date().toISOString(),
+            }
+        } as Package;
+    }
+
+    /**
+     * Copy of the metadata without the given versions and the dist-tags pointing at them.
+     * Removed dist-tags are not re-pointed: npm resolves ranges against what is left.
+     * @private
+     */
+    private _removeVersions(pkg: Package, removed: string[]): Package {
+        if (removed.length === 0) {
+            return pkg;
+        }
+
+        const gone = new Set(removed);
+        const versions = { ...pkg.versions };
+        for (const version of gone) {
+            delete versions[version];
+        }
+
+        const distTags = { ...pkg['dist-tags'] };
+        for (const [tag, tagVersion] of Object.entries(distTags)) {
+            if (gone.has(tagVersion as string)) {
+                delete distTags[tag];
+                this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to filtered version ${tagVersion}`);
+            }
+        }
+
+        return { ...pkg, versions, 'dist-tags': distTags };
+    }
+
+    /**
      * Filter package metadata before returning to client
      * This provides CVE, License, and Age checking when metadata is available
      */
     public async filter_metadata(packageInfo: Package): Promise<Package> {
         let pkg = packageInfo;
         const packageName = pkg.name;
-        this.logger.info(`[filter_metadata] --> Processing: ${packageName}`);
+        this.logger.debug(`[filter_metadata] --> Processing: ${packageName}`);
 
         try {
             // 1. Whitelist/blacklist check (basic filtering)
@@ -355,23 +421,19 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 this.logger.warn(`[filter_metadata] BLOCKED: ${packageName}@* - ${blockResult.reason}`);
                 this.metrics.recordBlock(packageName, '*', blockResult.reason);
 
-                // Return empty versions with security field
-                return {
-                    ...pkg,
-                    versions: {},
-                    'dist-tags': {},
-                    security: {
-                        blocked: true,
-                        reason: blockResult.reason,
-                        plugin: {
-                            name: 'verdaccio-security-filter',
-                            version: '2.0.0',
-                            mode: this.config.mode || 'blacklist',
-                        },
-                        blockedAt: new Date().toISOString(),
-                        rules: this._getAppliedRules(packageName),
-                    }
-                } as Package;
+                return this._blockedPackage(pkg, blockResult.reason, { rules: this._getAppliedRules(packageName) });
+            }
+
+            // 1b. Hide versions blocked by blockedVersions / versionRangeRules, so npm resolves
+            // to an allowed version instead of picking a blocked one and failing on the tarball.
+            if (this.securityRules.blockedVersions.length > 0 || this.securityRules.versionRangeRules.length > 0) {
+                const ruleBlocked = Object.keys(pkg.versions || {})
+                    .filter(version => this._versionBlockReason(packageName, version) !== null);
+
+                if (ruleBlocked.length > 0) {
+                    this.logger.warn(`[filter_metadata] RULE FILTERED: ${packageName}: ${ruleBlocked.join(', ')}`);
+                    pkg = this._removeVersions(pkg, ruleBlocked);
+                }
             }
 
             // 2. CVE Check - one lookup per package, versions are matched locally
@@ -389,20 +451,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         const reason = `CVE check failed (fail-closed mode): ${error.message}`;
                         this.metrics.recordBlock(packageName, '*', reason);
 
-                        return {
-                            ...pkg,
-                            versions: {},
-                            'dist-tags': {},
-                            security: {
-                                blocked: true,
-                                reason,
-                                plugin: {
-                                    name: 'verdaccio-security-filter',
-                                    version: '2.0.0',
-                                },
-                                blockedAt: new Date().toISOString(),
-                            }
-                        } as Package;
+                        return this._blockedPackage(pkg, reason);
                     }
                 }
 
@@ -415,50 +464,19 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
                     const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
 
-                    // Every version is vulnerable - nothing safe remains, so block
-                    // the whole package exactly as before.
+                    // Every version is vulnerable - nothing safe remains, so block the whole package.
                     if (vulnerableVersions.length === versions.length) {
                         this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
                         this.metrics.recordBlock(packageName, '*', reason);
 
-                        return {
-                            ...pkg,
-                            versions: {},
-                            'dist-tags': {},
-                            security: {
-                                blocked: true,
-                                reason,
-                                vulnerableVersions,
-                                plugin: {
-                                    name: 'verdaccio-security-filter',
-                                    version: '2.0.0',
-                                },
-                                blockedAt: new Date().toISOString(),
-                            }
-                        } as Package;
+                        return this._blockedPackage(pkg, reason, { vulnerableVersions });
                     }
 
                     this.logger.warn(`[filter_metadata] CVE FILTERED: ${packageName} - ${reason}: ${vulnerableVersions.join(', ')}`);
-
-                    const filteredVersions = { ...pkg.versions };
                     for (const version of vulnerableVersions) {
-                        delete filteredVersions[version];
                         this.metrics.recordBlock(packageName, version, reason);
                     }
-
-                    const filteredDistTags = { ...pkg['dist-tags'] };
-                    for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
-                        if (vulnerableVersions.includes(tagVersion as string)) {
-                            delete filteredDistTags[tag];
-                            this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to vulnerable version ${tagVersion}`);
-                        }
-                    }
-
-                    pkg = {
-                        ...pkg,
-                        versions: filteredVersions,
-                        'dist-tags': filteredDistTags,
-                    };
+                    pkg = this._removeVersions(pkg, vulnerableVersions);
                 }
             }
 
@@ -470,24 +488,11 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     const licenseResult = this.licenseChecker.checkLicense(versionData);
 
                     if (!licenseResult.allowed) {
-                        this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${licenseResult.reason}`);
-                        this.metrics.recordBlock(packageName, '*', licenseResult.reason || 'License not allowed');
+                        const reason = licenseResult.reason || 'License not allowed';
+                        this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${reason}`);
+                        this.metrics.recordBlock(packageName, '*', reason);
 
-                        return {
-                            ...pkg,
-                            versions: {},
-                            'dist-tags': {},
-                            security: {
-                                blocked: true,
-                                reason: licenseResult.reason || 'License not allowed',
-                                license: licenseResult.license,
-                                plugin: {
-                                    name: 'verdaccio-security-filter',
-                                    version: '2.0.0',
-                                },
-                                blockedAt: new Date().toISOString(),
-                            }
-                        } as Package;
+                        return this._blockedPackage(pkg, reason, { license: licenseResult.license });
                     }
                 }
             }
@@ -497,63 +502,31 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 // 4a. Check overall package age (minPackageAgeDays)
                 const ageResult = this.packageAgeChecker.checkPackageAge(pkg);
                 if (!ageResult.allowed && !ageResult.warnOnly) {
-                    this.logger.warn(`[filter_metadata] AGE BLOCKED: ${packageName} - ${ageResult.reason}`);
-                    this.metrics.recordBlock(packageName, '*', ageResult.reason || 'Package too new');
+                    const reason = ageResult.reason || 'Package too new';
+                    this.logger.warn(`[filter_metadata] AGE BLOCKED: ${packageName} - ${reason}`);
+                    this.metrics.recordBlock(packageName, '*', reason);
 
-                    return {
-                        ...pkg,
-                        versions: {},
-                        'dist-tags': {},
-                        security: {
-                            blocked: true,
-                            reason: ageResult.reason || 'Package too new',
-                            ageDays: ageResult.ageDays,
-                            plugin: {
-                                name: 'verdaccio-security-filter',
-                                version: '2.0.0',
-                            },
-                            blockedAt: new Date().toISOString(),
-                        }
-                    } as Package;
+                    return this._blockedPackage(pkg, reason, { ageDays: ageResult.ageDays });
                 } else if (!ageResult.allowed && ageResult.warnOnly) {
                     this.logger.warn(`[filter_metadata] AGE WARNING: ${packageName} - ${ageResult.reason} (warn-only mode)`);
                 }
 
                 // 4b. Check per-version age (minVersionAgeDays) — filter out versions that are too new
                 if (this.config.packageAge.minVersionAgeDays) {
-                    const filteredVersions = { ...pkg.versions };
                     const removedVersions: string[] = [];
 
-                    for (const version of Object.keys(filteredVersions)) {
+                    for (const version of Object.keys(pkg.versions || {})) {
                         const versionAgeResult = this.packageAgeChecker.checkVersionAge(pkg, version);
                         if (!versionAgeResult.allowed && !versionAgeResult.warnOnly) {
                             this.logger.warn(`[filter_metadata] VERSION AGE FILTERED: ${packageName}@${version} - ${versionAgeResult.reason}`);
                             this.metrics.recordBlock(packageName, version, versionAgeResult.reason || 'Version too new');
-                            delete filteredVersions[version];
                             removedVersions.push(version);
                         } else if (!versionAgeResult.allowed && versionAgeResult.warnOnly) {
                             this.logger.warn(`[filter_metadata] VERSION AGE WARNING: ${packageName}@${version} - ${versionAgeResult.reason} (warn-only mode)`);
                         }
                     }
 
-                    if (removedVersions.length > 0) {
-                        this.logger.info(`[filter_metadata] Removed ${removedVersions.length} too-new version(s) from ${packageName}: ${removedVersions.join(', ')}`);
-
-                        // Also remove filtered versions from dist-tags
-                        const filteredDistTags = { ...pkg['dist-tags'] };
-                        for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
-                            if (removedVersions.includes(tagVersion)) {
-                                delete filteredDistTags[tag];
-                                this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to filtered version ${tagVersion}`);
-                            }
-                        }
-
-                        pkg = {
-                            ...pkg,
-                            versions: filteredVersions,
-                            'dist-tags': filteredDistTags,
-                        };
-                    }
+                    pkg = this._removeVersions(pkg, removedVersions);
                 }
             }
 
@@ -565,42 +538,31 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     const authorResult = this.authorChecker.checkAuthor(versionData);
 
                     if (!authorResult.allowed && !this.config.authorFilter.warnOnly) {
-                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${authorResult.reason}`);
+                        const reason = authorResult.reason || 'Author not allowed';
+                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${reason}`);
                         this.metrics.record({
                             timestamp: new Date().toISOString(),
                             event: 'author_blocked',
                             packageName,
                             version: latestVersion,
-                            reason: authorResult.reason || 'Author not allowed',
+                            reason,
                             metadata: {
                                 blockedBy: authorResult.blockedBy,
                                 authorInfo: authorResult.authorInfo,
                             },
                         });
 
-                        return {
-                            ...pkg,
-                            versions: {},
-                            'dist-tags': {},
-                            security: {
-                                blocked: true,
-                                reason: authorResult.reason || 'Author not allowed',
-                                blockedBy: authorResult.blockedBy,
-                                authorInfo: authorResult.authorInfo,
-                                plugin: {
-                                    name: 'verdaccio-security-filter',
-                                    version: '2.0.0',
-                                },
-                                blockedAt: new Date().toISOString(),
-                            }
-                        } as Package;
+                        return this._blockedPackage(pkg, reason, {
+                            blockedBy: authorResult.blockedBy,
+                            authorInfo: authorResult.authorInfo,
+                        });
                     } else if (!authorResult.allowed && this.config.authorFilter.warnOnly) {
                         this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName} - ${authorResult.reason} (warn-only mode)`);
                     }
                 }
             }
 
-            this.logger.info(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
+            this.logger.debug(`[filter_metadata] [OK] ALLOWED: ${packageName}`);
             return pkg;
 
         } catch (error: any) {
@@ -611,25 +573,26 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 this.logger.warn(`[filter_metadata] Error handling: fail-closed - BLOCKING ${packageName}`);
                 this.metrics.recordBlock(packageName, '*', `Error during processing: ${error.message}`);
 
-                return {
-                    ...packageInfo,  // use original on error path
-                    versions: {},
-                    'dist-tags': {},
-                    security: {
-                        blocked: true,
-                        reason: `Error during security processing (fail-closed mode): ${error.message}`,
-                        plugin: {
-                            name: 'verdaccio-security-filter',
-                            version: '2.0.0',
-                        },
-                        blockedAt: new Date().toISOString(),
-                    }
-                } as Package;
+                // use original on error path
+                return this._blockedPackage(packageInfo, `Error during security processing (fail-closed mode): ${error.message}`);
             }
 
             this.logger.warn(`[filter_metadata] Error handling: fail-open - ALLOWING ${packageName}`);
             return packageInfo;  // use original on error path
         }
+    }
+
+    /**
+     * Why a specific version is blocked by blockedVersions / versionRangeRules, or null.
+     * @private
+     */
+    private _versionBlockReason(packageName: string, version: string): string | null {
+        if (this.securityRules.blockedVersions.includes(`${packageName}@${version}`)) {
+            return 'Exact version match in blocklist';
+        }
+
+        const rangeRule = this._getVersionRangeRule(packageName, version);
+        return rangeRule ? `Version matches blocked range: ${rangeRule.range}` : null;
     }
 
     /**
@@ -655,18 +618,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             return { blocked: true, reason: 'Package scope not allowed' };
         }
 
-        // 4. Exact version blocking
-        if (version) {
-            const versionKey = `${packageName}@${version}`;
-            if (this.securityRules.blockedVersions.includes(versionKey)) {
-                return { blocked: true, reason: 'Exact version match in blocklist' };
-            }
-
-            // 5. Version range rules
-            const rangeRule = this._getVersionRangeRule(packageName, version);
-            if (rangeRule && rangeRule.strategy === 'block') {
-                return { blocked: true, reason: `Version matches blocked range: ${rangeRule.range}` };
-            }
+        // 4. Exact version blocking and version range rules
+        const versionReason = version ? this._versionBlockReason(packageName, version) : null;
+        if (versionReason) {
+            return { blocked: true, reason: versionReason };
         }
 
         return { blocked: false, reason: '' };
@@ -685,11 +640,9 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             rules.whitelisted = false;
         }
 
-        if (this._isBlockedByPattern(packageName)) {
-            rules.blockedPattern = this.securityRules.blockedPatterns.find(pattern => {
-                const regex = new RegExp(pattern);
-                return regex.test(packageName);
-            });
+        const blockedPattern = this.blockedPatternRegexes.find(regex => regex.test(packageName));
+        if (blockedPattern) {
+            rules.blockedPattern = blockedPattern.source;
         }
 
         if (packageName.startsWith('@')) {
