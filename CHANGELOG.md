@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.9](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.8...v1.3.9) (2026-11-09)
+
+
+### Performance Improvements
+
+* **cve:** query OSV once per package and cache per package ([#46](https://github.com/ponomarenko/verdaccio-security-filter/issues/46)) ([8b244a0](https://github.com/ponomarenko/verdaccio-security-filter/commit/8b244a0b1592157d45a13e014f34b6a5707fdf79))
+
 ## [1.3.8](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.7...v1.3.8) (2026-11-09)
 
 
