@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.12...v1.4.0) (2026-11-09)
+
+
+### Features
+
+* add dry-run mode ([#70](https://github.com/ponomarenko/verdaccio-security-filter/issues/70)) ([7d260bf](https://github.com/ponomarenko/verdaccio-security-filter/commit/7d260bf241f9aece68322e84debade0826bcd334)), closes [#55](https://github.com/ponomarenko/verdaccio-security-filter/issues/55)
+
 ## [1.3.12](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.11...v1.3.12) (2026-11-09)
 
 
