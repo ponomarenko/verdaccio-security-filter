@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.11](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.10...v1.3.11) (2026-11-09)
+
+
+### Bug Fixes
+
+* **whitelist:** apply whitelist.versions to metadata, not only tarballs ([#65](https://github.com/ponomarenko/verdaccio-security-filter/issues/65)) ([07b9474](https://github.com/ponomarenko/verdaccio-security-filter/commit/07b947479a6a15fbe71b12996736be5479493187)), closes [#53](https://github.com/ponomarenko/verdaccio-security-filter/issues/53)
+
 ## [1.3.10](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.9...v1.3.10) (2026-11-09)
 
 
