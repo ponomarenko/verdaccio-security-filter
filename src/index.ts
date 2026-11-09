@@ -374,27 +374,40 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 } as Package;
             }
 
-            // 2. CVE Check - check versions in controlled batches
+            // 2. CVE Check - one lookup per package, versions are matched locally
             if (this.config.cveCheck?.enabled) {
                 const versions = Object.keys(pkg.versions || {});
-                const vulnerableVersions: string[] = [];
+                let vulnerableVersions: string[] = [];
 
-                const BATCH_SIZE = 10;
-                for (let i = 0; i < versions.length; i += BATCH_SIZE) {
-                    const batch = versions.slice(i, i + BATCH_SIZE);
-                    const results = await Promise.allSettled(
-                        batch.map(version => this.cveChecker.checkPackage(packageName, version))
-                    );
+                try {
+                    const results = await this.cveChecker.checkVersions(packageName, versions);
+                    vulnerableVersions = results.filter(result => result.isVulnerable).map(result => result.version);
+                } catch (error: any) {
+                    this.logger.error(`[filter_metadata] CVE check failed for ${packageName}: ${error.message}`);
 
-                    results.forEach((result, index) => {
-                        if (result.status === 'fulfilled' && result.value.isVulnerable) {
-                            const version = batch[index];
-                            vulnerableVersions.push(version);
-                            this.logger.warn(`[filter_metadata] CVE found in ${packageName}@${version}: ${result.value.vulnerabilities.length} vulnerabilities`);
-                        } else if (result.status === 'rejected') {
-                            this.logger.error(`[filter_metadata] CVE check failed for ${packageName}@${batch[index]}: ${result.reason}`);
-                        }
-                    });
+                    if (this.config.errorHandling?.onCveCheckError === 'fail-closed') {
+                        const reason = `CVE check failed (fail-closed mode): ${error.message}`;
+                        this.metrics.recordBlock(packageName, '*', reason);
+
+                        return {
+                            ...pkg,
+                            versions: {},
+                            'dist-tags': {},
+                            security: {
+                                blocked: true,
+                                reason,
+                                plugin: {
+                                    name: 'verdaccio-security-filter',
+                                    version: '2.0.0',
+                                },
+                                blockedAt: new Date().toISOString(),
+                            }
+                        } as Package;
+                    }
+                }
+
+                if (vulnerableVersions.length > 0 && !this.config.cveCheck.autoBlock) {
+                    this.logger.warn(`[filter_metadata] CVE found in ${packageName}: ${vulnerableVersions.length} vulnerable version(s), autoBlock is off`);
                 }
 
                 // If configured to auto-block, remove only the vulnerable versions -

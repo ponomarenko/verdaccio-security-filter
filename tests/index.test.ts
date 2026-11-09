@@ -565,7 +565,7 @@ describe('SecurityFilterPlugin', () => {
         }
 
         function stubCveChecker(plugin: any, vulnerableVersions: string[]): void {
-            plugin.cveChecker.checkPackage = jest.fn(async (packageName: string, version: string) => ({
+            plugin.cveChecker.checkVersions = jest.fn(async (packageName: string, versions: string[]) => versions.map(version => ({
                 package: packageName,
                 version,
                 vulnerabilities: vulnerableVersions.includes(version)
@@ -573,7 +573,7 @@ describe('SecurityFilterPlugin', () => {
                     : [],
                 isVulnerable: vulnerableVersions.includes(version),
                 checkedAt: new Date().toISOString(),
-            }));
+            })));
         }
 
         it('should only remove the vulnerable version, keeping unaffected versions installable', async () => {
@@ -644,6 +644,25 @@ describe('SecurityFilterPlugin', () => {
                 vulnerableVersions: expect.arrayContaining(['1.0.0', '2.0.0']),
             }));
             expect(recordBlock).toHaveBeenCalledWith('my-lib', '*', expect.any(String));
+        });
+
+        it.each([
+            ['fail-open', false],
+            ['fail-closed', true],
+        ])('should apply onCveCheckError=%s when the lookup fails', async (onCveCheckError, blocked) => {
+            const config = {
+                mode: 'blacklist',
+                cveCheck: { enabled: true, autoBlock: true, severity: ['high', 'critical'] },
+                errorHandling: { onCveCheckError },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            (plugin as any).cveChecker.checkVersions = jest.fn().mockRejectedValue(new Error('OSV down'));
+
+            const result: any = await plugin.filter_metadata(makePkg('my-lib', ['1.0.0', '2.0.0']));
+
+            expect(Object.keys(result.versions)).toEqual(blocked ? [] : ['1.0.0', '2.0.0']);
+            expect(!!result.security?.blocked).toBe(blocked);
         });
     });
 });
