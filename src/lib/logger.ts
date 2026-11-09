@@ -7,9 +7,11 @@ import { LoggerConfig } from '../types';
 export class SecurityLogger {
     private verdaccioLogger: Logger;
     private config: LoggerConfig;
-    private readonly prefix = '[Security Filter]';
+    private readonly prefix: string;
 
-    constructor(verdaccioLogger: Logger, config?: LoggerConfig) {
+    constructor(verdaccioLogger: Logger, config?: LoggerConfig, dryRun = false) {
+        // In dry-run every line is marked, so "BLOCKED" in the log cannot be mistaken for a real block.
+        this.prefix = dryRun ? '[Security Filter] [DRY RUN]' : '[Security Filter]';
         this.verdaccioLogger = verdaccioLogger;
         this.config = {
             level: config?.level || 'info',

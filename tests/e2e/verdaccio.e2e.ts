@@ -247,6 +247,26 @@ describe('plugin inside a running Verdaccio', () => {
         });
     });
 
+    describe('dry-run mode', () => {
+        it('serves everything the rules would block', async () => {
+            registry = await startRegistry({
+                mode: 'blacklist',
+                dryRun: true,
+                blockedVersions: ['demo-pkg@1.5.0'],
+                blockedPatterns: ['^evil-'],
+                licenses: { allowed: ['MIT'], blocked: [], requireLicense: true },
+            });
+
+            expect(versionsOf(await registry.get('/demo-pkg'))).toEqual(VERSIONS);
+            expect((await registry.get('/demo-pkg/-/demo-pkg-1.5.0.tgz')).status).toBe(200);
+
+            const evil = await registry.get('/evil-pkg');
+            expect(versionsOf(evil)).toEqual(VERSIONS);
+            expect(evil.body.security).toBeUndefined();
+            expect((await registry.get('/evil-pkg/-/evil-pkg-1.0.0.tgz')).status).toBe(200);
+        });
+    });
+
     describe('CVE check', () => {
         const fixedIn2 = {
             id: 'GHSA-e2e',

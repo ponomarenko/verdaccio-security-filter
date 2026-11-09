@@ -72,6 +72,8 @@ export interface SecurityConfig extends Config {
 
     // Phase 2: New features
     mode?: 'blacklist' | 'whitelist';
+    /** Log and record every decision, but block nothing. */
+    dryRun?: boolean;
     whitelist?: WhitelistConfig;
     licenses?: LicenseConfig;
     cveCheck?: CVECheckConfig;
@@ -120,6 +122,8 @@ export interface MetricsData {
     version?: string;
     reason: string;
     metadata?: Record<string, any>;
+    /** Set when the event was only simulated (dry-run mode). */
+    dryRun?: boolean;
 }
 
 export interface AuthorInfo {

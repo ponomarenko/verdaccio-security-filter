@@ -117,7 +117,7 @@ This plugin implements **two independent security layers** for complete protecti
 - [ ] **ML-based Anomaly Detection** - Machine learning for threat detection
 
 #### Phase 5: Developer Experience
-- [ ] **Dry Run Mode** - Test rules without actually blocking
+- [x] **Dry Run Mode** - Test rules without actually blocking (`dryRun: true`)
 - [ ] **Auto-approve Criteria** - Automatic approval based on npm stats (downloads, stars)
 - [ ] **CLI Tool** - Command-line interface for rule management
 - [ ] **Visual Studio Code Extension** - IDE integration
@@ -406,10 +406,29 @@ middlewares:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `mode` | `string` | `blacklist` | Filter mode: `blacklist` or `whitelist` |
+| `dryRun` | `boolean` | `false` | Log and record every decision, but block nothing. See [Dry-run mode](#dry-run-mode) |
 | `blockedVersions` | `string[]` | `[]` | List of `package@version` to block |
 | `blockedPatterns` | `string[]` | `[]` | Regex patterns for package names |
 | `allowedScopes` | `string[]` | `[]` | Allowed package scopes |
 | `blockedScopes` | `string[]` | `[]` | Blocked package scopes |
+
+### Dry-run mode
+
+Set `dryRun: true` to see what a rule set would do before enforcing it. Put it in both the `filters` and the `middlewares` block, like the rest of the configuration.
+
+```yaml
+dryRun: true
+```
+
+While it is on:
+
+- every check runs as usual, including CVE lookups
+- nothing is blocked: metadata is served unchanged and every tarball can be downloaded
+- each decision is logged at `warn` with a `[DRY RUN]` marker, followed by a summary such as `lodash: would remove 115 of 117 version(s)`
+- metrics events carry `"dryRun": true`
+- one warning at start-up says that dry-run is active
+
+Recommended before turning on `cveCheck.autoBlock`, a license policy or the author filter on a registry that is already in use.
 
 ### CVE Check Options
 
