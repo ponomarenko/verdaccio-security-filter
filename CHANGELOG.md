@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.0...v1.4.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* answer 403 with the reason for every blocked package ([#72](https://github.com/ponomarenko/verdaccio-security-filter/issues/72)) ([443f7f6](https://github.com/ponomarenko/verdaccio-security-filter/commit/443f7f62764e5e508a1192e3afa1e65d38467cbc)), closes [#64](https://github.com/ponomarenko/verdaccio-security-filter/issues/64)
+
 ## [1.4.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.12...v1.4.0) (2026-11-09)
 
 
