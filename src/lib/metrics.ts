@@ -13,7 +13,7 @@ export class MetricsCollector {
     private readonly flushIntervalMs = 10_000;
     private flushTimer: NodeJS.Timeout | null = null;
 
-    constructor(config?: MetricsConfig) {
+    constructor(config?: MetricsConfig, private readonly dryRun = false) {
         this.config = {
             enabled: config?.enabled || false,
             output: config?.output || 'stdout',
@@ -39,7 +39,7 @@ export class MetricsCollector {
             this.flush();
         }
 
-        this.metricsBuffer.push(event);
+        this.metricsBuffer.push(this.dryRun ? { ...event, dryRun: true } : event);
 
         if (this.metricsBuffer.length >= this.bufferSize) {
             this.flush();

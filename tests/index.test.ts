@@ -830,4 +830,77 @@ describe('SecurityFilterPlugin', () => {
             expect(Object.keys(result.versions)).toEqual(['1.0.0', '2.0.0']);
         });
     });
+
+    describe('dry-run mode', () => {
+        const rules = {
+            mode: 'blacklist',
+            dryRun: true,
+            blockedPatterns: ['^evil-'],
+            blockedVersions: ['my-lib@1.0.0'],
+            metrics: { enabled: true, output: 'stdout' },
+        } as any;
+        const metadata = (name: string): any => ({
+            name,
+            versions: { '1.0.0': { name, version: '1.0.0' }, '2.0.0': { name, version: '2.0.0' } },
+            'dist-tags': { latest: '2.0.0' },
+        });
+
+        beforeEach(() => {
+            pluginOptions.logger.warn.mockClear();
+        });
+
+        const warnings = () => pluginOptions.logger.warn.mock.calls.map((call: any[]) => call[0]).join('\n');
+
+        it('should return metadata untouched and log what would be removed', async () => {
+            const plugin = new SecurityFilterPlugin(rules, pluginOptions);
+            const pkg = metadata('my-lib');
+
+            const result = await plugin.filter_metadata(pkg);
+            plugin.destroy();
+
+            expect(result).toBe(pkg);
+            expect(warnings()).toContain('[DRY RUN]');
+            expect(warnings()).toContain('my-lib: would remove 1 of 2 version(s)');
+        });
+
+        it('should not block a package that the rules reject entirely', async () => {
+            const plugin = new SecurityFilterPlugin(rules, pluginOptions);
+            const pkg = metadata('evil-pkg');
+
+            const result: any = await plugin.filter_metadata(pkg);
+            plugin.destroy();
+
+            expect(result).toBe(pkg);
+            expect(result.security).toBeUndefined();
+            expect(warnings()).toContain('evil-pkg: would remove 2 of 2 version(s)');
+        });
+
+        it('should let blocked tarball and metadata requests through the middleware and mark the metric', async () => {
+            const plugin = new SecurityFilterPlugin(rules, pluginOptions);
+            const record = jest.spyOn((plugin as any).metrics.metricsBuffer, 'push');
+            let middleware: any;
+            plugin.register_middlewares({ use: (fn: any) => { middleware = fn; } } as any, {} as any, {} as any);
+
+            for (const url of ['/my-lib/-/my-lib-1.0.0.tgz', '/evil-pkg']) {
+                const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+                const next = jest.fn();
+                await middleware({ method: 'GET', url } as any, res, next);
+
+                expect(res.status).not.toHaveBeenCalled();
+                expect(next).toHaveBeenCalledWith();
+            }
+            plugin.destroy();
+
+            expect(record).toHaveBeenCalledWith(expect.objectContaining({ event: 'block', packageName: 'my-lib', version: '1.0.0', dryRun: true }));
+        });
+
+        it('should announce dry-run at start-up and stay silent about it otherwise', () => {
+            new SecurityFilterPlugin(rules, pluginOptions).destroy();
+            expect(warnings()).toContain('Dry-run mode is on');
+
+            pluginOptions.logger.warn.mockClear();
+            new SecurityFilterPlugin({ ...rules, dryRun: false }, pluginOptions).destroy();
+            expect(warnings()).not.toContain('DRY RUN');
+        });
+    });
 });

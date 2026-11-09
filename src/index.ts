@@ -54,10 +54,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         }
 
         // Initialize enhanced logger
-        this.logger = new SecurityLogger(options.logger, this.config.logger);
+        this.logger = new SecurityLogger(options.logger, this.config.logger, !!this.config.dryRun);
 
         // Initialize metrics collector
-        this.metrics = new MetricsCollector(this.config.metrics);
+        this.metrics = new MetricsCollector(this.config.metrics, !!this.config.dryRun);
 
         // Initialize whitelist checker
         this.whitelistChecker = new WhitelistChecker(this.config.whitelist);
@@ -88,6 +88,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         });
 
         this._logInitialization();
+
+        if (this.config.dryRun) {
+            this.logger.warn('Dry-run mode is on: decisions are logged and recorded in metrics, but nothing is blocked');
+        }
     }
 
     /**
@@ -159,6 +163,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     private _getEnabledFeatures(): string[] {
         const features: string[] = [];
 
+        if (this.config.dryRun) features.push('dry-run');
         if (this.config.mode === 'whitelist') features.push('whitelist-mode');
         if (this.config.metrics?.enabled) features.push('metrics');
         if (this.config.cveCheck?.enabled) features.push('cve-checking');
@@ -286,6 +291,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         this.logger.warn(`[Middleware] [X] BLOCKED TARBALL: ${packageName}@${version || '*'} - ${blockResult.reason}`);
                         this.metrics.recordBlock(packageName, version || '*', blockResult.reason);
 
+                        if (this.config.dryRun) {
+                            return next();
+                        }
+
                         // Return 403 Forbidden with detailed error
                         res.status(403).json({
                             error: 'Package blocked by security filter',
@@ -307,6 +316,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
                     if (blockResult.blocked) {
                         this.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
+
+                        if (this.config.dryRun) {
+                            return next();
+                        }
 
                         const blockedResponse = {
                             name: packageName,
@@ -426,6 +439,24 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
      * This provides CVE, License, and Age checking when metadata is available
      */
     public async filter_metadata(packageInfo: Package): Promise<Package> {
+        const filtered = await this._filterMetadata(packageInfo);
+
+        if (!this.config.dryRun || filtered === packageInfo) {
+            return filtered;
+        }
+
+        // Dry-run: the decision was computed, logged and recorded above; serve the package untouched.
+        const total = Object.keys(packageInfo.versions || {}).length;
+        const left = Object.keys(filtered.versions || {}).length;
+        this.logger.warn(`[filter_metadata] ${packageInfo.name}: would remove ${total - left} of ${total} version(s)`);
+        return packageInfo;
+    }
+
+    /**
+     * The actual filtering; filter_metadata decides whether its result is applied.
+     * @private
+     */
+    private async _filterMetadata(packageInfo: Package): Promise<Package> {
         let pkg = packageInfo;
         const packageName = pkg.name;
         this.logger.debug(`[filter_metadata] --> Processing: ${packageName}`);
