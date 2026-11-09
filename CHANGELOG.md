@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.12](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.11...v1.3.12) (2026-11-09)
+
+
+### Bug Fixes
+
+* **filter:** check license and author on every version ([#67](https://github.com/ponomarenko/verdaccio-security-filter/issues/67)) ([71a0d48](https://github.com/ponomarenko/verdaccio-security-filter/commit/71a0d48ce3aa5a88b208455cb6a7b24e6ad5377f)), closes [#54](https://github.com/ponomarenko/verdaccio-security-filter/issues/54) [#56](https://github.com/ponomarenko/verdaccio-security-filter/issues/56)
+
 ## [1.3.11](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.10...v1.3.11) (2026-11-09)
 
 
