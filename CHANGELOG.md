@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.8](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.7...v1.3.8) (2026-11-09)
+
+
+### Bug Fixes
+
+* **cve:** detect severity from CVSS vectors and filter only vulnerable versions ([#40](https://github.com/ponomarenko/verdaccio-security-filter/issues/40)) ([825ec99](https://github.com/ponomarenko/verdaccio-security-filter/commit/825ec99b59640366433f4cdc9285d3de0a0a3384)), closes [#38](https://github.com/ponomarenko/verdaccio-security-filter/issues/38)
+
 ## [1.3.7](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.6...v1.3.7) (2026-11-02)
 
 
