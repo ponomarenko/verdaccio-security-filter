@@ -397,27 +397,55 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     });
                 }
 
-                // If configured to auto-block and vulnerabilities found
+                // If configured to auto-block, remove only the vulnerable versions -
+                // other versions of the same package may not be affected.
                 if (this.config.cveCheck.autoBlock && vulnerableVersions.length > 0) {
                     const reason = `Package has ${vulnerableVersions.length} vulnerable version(s)`;
-                    this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
-                    this.metrics.recordBlock(packageName, '*', reason);
 
-                    return {
-                        ...pkg,
-                        versions: {},
-                        'dist-tags': {},
-                        security: {
-                            blocked: true,
-                            reason,
-                            vulnerableVersions,
-                            plugin: {
-                                name: 'verdaccio-security-filter',
-                                version: '2.0.0',
-                            },
-                            blockedAt: new Date().toISOString(),
+                    // Every version is vulnerable - nothing safe remains, so block
+                    // the whole package exactly as before.
+                    if (vulnerableVersions.length === versions.length) {
+                        this.logger.warn(`[filter_metadata] CVE BLOCKED: ${packageName} - ${reason}`);
+                        this.metrics.recordBlock(packageName, '*', reason);
+
+                        return {
+                            ...pkg,
+                            versions: {},
+                            'dist-tags': {},
+                            security: {
+                                blocked: true,
+                                reason,
+                                vulnerableVersions,
+                                plugin: {
+                                    name: 'verdaccio-security-filter',
+                                    version: '2.0.0',
+                                },
+                                blockedAt: new Date().toISOString(),
+                            }
+                        } as Package;
+                    }
+
+                    this.logger.warn(`[filter_metadata] CVE FILTERED: ${packageName} - ${reason}: ${vulnerableVersions.join(', ')}`);
+
+                    const filteredVersions = { ...pkg.versions };
+                    for (const version of vulnerableVersions) {
+                        delete filteredVersions[version];
+                        this.metrics.recordBlock(packageName, version, reason);
+                    }
+
+                    const filteredDistTags = { ...pkg['dist-tags'] };
+                    for (const [tag, tagVersion] of Object.entries(filteredDistTags)) {
+                        if (vulnerableVersions.includes(tagVersion as string)) {
+                            delete filteredDistTags[tag];
+                            this.logger.debug(`[filter_metadata] Removed dist-tag "${tag}" pointing to vulnerable version ${tagVersion}`);
                         }
-                    } as Package;
+                    }
+
+                    pkg = {
+                        ...pkg,
+                        versions: filteredVersions,
+                        'dist-tags': filteredDistTags,
+                    };
                 }
             }
 

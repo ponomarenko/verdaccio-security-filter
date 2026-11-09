@@ -543,4 +543,107 @@ describe('SecurityFilterPlugin', () => {
             expect(result.versions['2.0.0']).toBeDefined();
         });
     });
+
+    describe('filter_metadata - cveCheck.autoBlock', () => {
+        function makePkg(name: string, versionNames: string[]): any {
+            const versionEntries: Record<string, any> = {};
+            for (const ver of versionNames) {
+                versionEntries[ver] = { name, version: ver };
+            }
+            return {
+                name,
+                versions: versionEntries,
+                'dist-tags': { latest: versionNames[versionNames.length - 1] },
+                time: {},
+                _id: name,
+                readme: '',
+                _rev: '',
+                _attachments: {},
+                _distfiles: {},
+                _uplinks: {},
+            };
+        }
+
+        function stubCveChecker(plugin: any, vulnerableVersions: string[]): void {
+            plugin.cveChecker.checkPackage = jest.fn(async (packageName: string, version: string) => ({
+                package: packageName,
+                version,
+                vulnerabilities: vulnerableVersions.includes(version)
+                    ? [{ id: 'GHSA-test', severity: 'high', summary: 'test', affectedVersions: [], publishedDate: '', source: 'osv' }]
+                    : [],
+                isVulnerable: vulnerableVersions.includes(version),
+                checkedAt: new Date().toISOString(),
+            }));
+        }
+
+        it('should only remove the vulnerable version, keeping unaffected versions installable', async () => {
+            const config = {
+                mode: 'blacklist',
+                cveCheck: {
+                    enabled: true,
+                    autoBlock: true,
+                    severity: ['high', 'critical'],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            stubCveChecker(plugin, ['1.0.0']);
+
+            const pkg = makePkg('my-lib', ['1.0.0', '2.0.0']);
+
+            const result = await plugin.filter_metadata(pkg);
+
+            expect(result.versions['1.0.0']).toBeUndefined();
+            expect(result.versions['2.0.0']).toBeDefined();
+        });
+
+        it('should remove dist-tags pointing to a vulnerable version', async () => {
+            const config = {
+                mode: 'blacklist',
+                cveCheck: {
+                    enabled: true,
+                    autoBlock: true,
+                    severity: ['high', 'critical'],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            stubCveChecker(plugin, ['2.0.0']);
+
+            const pkg = makePkg('my-lib', ['1.0.0', '2.0.0']);
+            pkg['dist-tags'] = { latest: '2.0.0', stable: '1.0.0' };
+
+            const result = await plugin.filter_metadata(pkg);
+
+            expect(result['dist-tags']['latest']).toBeUndefined();
+            expect(result['dist-tags']['stable']).toBe('1.0.0');
+        });
+
+        it('should block the whole package when every version is vulnerable', async () => {
+            const config = {
+                mode: 'blacklist',
+                cveCheck: {
+                    enabled: true,
+                    autoBlock: true,
+                    severity: ['high', 'critical'],
+                },
+            } as any;
+
+            const plugin = new SecurityFilterPlugin(config, pluginOptions);
+            stubCveChecker(plugin, ['1.0.0', '2.0.0']);
+            const recordBlock = jest.spyOn((plugin as any).metrics, 'recordBlock');
+
+            const pkg = makePkg('my-lib', ['1.0.0', '2.0.0']);
+
+            const result: any = await plugin.filter_metadata(pkg);
+
+            expect(result.versions).toEqual({});
+            expect(result['dist-tags']).toEqual({});
+            expect(result.security).toEqual(expect.objectContaining({
+                blocked: true,
+                vulnerableVersions: expect.arrayContaining(['1.0.0', '2.0.0']),
+            }));
+            expect(recordBlock).toHaveBeenCalledWith('my-lib', '*', expect.any(String));
+        });
+    });
 });
