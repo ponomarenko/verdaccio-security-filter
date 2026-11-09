@@ -12,9 +12,28 @@ import { CVEChecker } from './lib/cve-checker';
 import { LicenseChecker } from './lib/license-checker';
 import { PackageAgeChecker } from './lib/package-age-checker';
 import { AuthorChecker } from './lib/author-checker';
+import { LRUCache } from './lib/lru-cache';
 
 // package.json sits next to both src/ and build/, and is always part of the published package.
 const PLUGIN_VERSION: string = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
+
+/**
+ * Whole-package blocks decided in filter_metadata, by package name. Module-level because
+ * Verdaccio creates one plugin instance for `filters` and another for `middlewares`,
+ * and the middleware is the only place that can still change the HTTP response.
+ */
+const filterBlocks = new LRUCache<string, { security: Record<string, any>; at: number }>(1000);
+
+/** Body of every 403 the plugin sends. npm prints `error`, so the reason has to be in it. */
+function forbiddenBody(packageName: string, reason: string, extra: Record<string, any> = {}): Record<string, any> {
+    return {
+        error: `Package blocked by security filter: ${reason}`,
+        package: packageName,
+        reason,
+        ...extra,
+        timestamp: new Date().toISOString(),
+    };
+}
 
 /**
  * Security Filter Plugin for Verdaccio
@@ -296,13 +315,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                         }
 
                         // Return 403 Forbidden with detailed error
-                        res.status(403).json({
-                            error: 'Package blocked by security filter',
-                            package: packageName,
-                            version: version || 'all versions',
-                            reason: blockResult.reason,
-                            timestamp: new Date().toISOString()
-                        });
+                        res.status(403).json(forbiddenBody(packageName, blockResult.reason, { version: version || 'all versions' }));
                         return;
                     }
 
@@ -321,10 +334,9 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                             return next();
                         }
 
-                        const blockedResponse = {
-                            name: packageName,
-                            versions: {},
-                            'dist-tags': {},
+                        // 403 with the reason in `error`: npm prints it. A 200 with no versions
+                        // only makes npm say "No versions available".
+                        res.status(403).json(forbiddenBody(packageName, blockResult.reason, {
                             security: {
                                 blocked: true,
                                 reason: blockResult.reason,
@@ -335,21 +347,28 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                                 },
                                 blockedAt: new Date().toISOString(),
                                 rules: this._getAppliedRules(packageName),
-                                message: `This package has been blocked by security filter: ${blockResult.reason}`,
                                 contact: 'Please contact your registry administrator for more information',
                             },
-                            _security: {
-                                blocked: true,
-                                reason: blockResult.reason,
-                                blockedBy: 'verdaccio-security-filter',
-                                blockedAt: new Date().toISOString(),
-                            }
-                        };
-
-                        res.status(200).json(blockedResponse);
+                        }));
                         return;
-                    } else {
-                        this.logger.debug(`[Middleware] [OK] ALLOWED METADATA: ${packageName}`);
+                    }
+
+                    this.logger.debug(`[Middleware] [OK] ALLOWED METADATA: ${packageName}`);
+
+                    if (!this.config.dryRun) {
+                        // filter_metadata runs inside Verdaccio's handler, after this point. If it blocks the
+                        // whole package during this request, replace the empty packument with the same 403.
+                        const startedAt = Date.now();
+                        const send = res.send.bind(res);
+                        res.send = (body?: any) => {
+                            const block = filterBlocks.get(packageName);
+                            if (block && block.at >= startedAt && res.statusCode < 300) {
+                                res.removeHeader('ETag');
+                                res.status(403);
+                                return send(JSON.stringify(forbiddenBody(packageName, block.security.reason, { security: block.security })));
+                            }
+                            return send(body);
+                        };
                     }
                 }
 
@@ -441,7 +460,16 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     public async filter_metadata(packageInfo: Package): Promise<Package> {
         const filtered = await this._filterMetadata(packageInfo);
 
-        if (!this.config.dryRun || filtered === packageInfo) {
+        if (!this.config.dryRun) {
+            const security = (filtered as any).security;
+            if (security?.blocked) {
+                // Verdaccio drops `security` from the response; hand it to the middleware instead.
+                filterBlocks.set(packageInfo.name, { security, at: Date.now() });
+            }
+            return filtered;
+        }
+
+        if (filtered === packageInfo) {
             return filtered;
         }
 

@@ -161,7 +161,7 @@ describe('SecurityFilterPlugin', () => {
             expect(res.status).toHaveBeenCalledWith(403);
             expect(res.json).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    error: 'Package blocked by security filter',
+                    error: 'Package blocked by security filter: Package is not in whitelist',
                     package: 'hawk',
                 })
             );
@@ -246,12 +246,12 @@ describe('SecurityFilterPlugin', () => {
             await middlewareFunction(req, res, next);
 
             // New behavior: middleware directly responds with blocked package info
-            expect(res.status).toHaveBeenCalledWith(200);
+            expect(res.status).toHaveBeenCalledWith(403);
             expect(res.json).toHaveBeenCalled();
 
             const jsonCall = res.json.mock.calls[0][0];
-            expect(jsonCall.name).toBe('hawk');
-            expect(jsonCall.versions).toEqual({});
+            expect(jsonCall.package).toBe('hawk');
+            expect(jsonCall.error).toBe('Package blocked by security filter: Package is not in whitelist');
             expect(jsonCall.security).toBeDefined();
             expect(jsonCall.security.blocked).toBe(true);
 
@@ -269,10 +269,10 @@ describe('SecurityFilterPlugin', () => {
             const app = { use: jest.fn((fn) => { middlewareFunction = fn; }) } as any;
             plugin.register_middlewares(app, {} as any, {} as any);
 
-            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() } as any;
             await middlewareFunction({ method: 'GET', url: '/@vueuse%2fmetadata?write=true' } as any, res, jest.fn());
 
-            expect(res.json.mock.calls[0][0].name).toBe('@vueuse/metadata');
+            expect(res.json.mock.calls[0][0].package).toBe('@vueuse/metadata');
         });
 
         it.each([
@@ -288,7 +288,7 @@ describe('SecurityFilterPlugin', () => {
             const app = { use: jest.fn((fn) => { middlewareFunction = fn; }) } as any;
             plugin.register_middlewares(app, {} as any, {} as any);
 
-            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() } as any;
             const next = jest.fn();
             await middlewareFunction({ method, url } as any, res, next);
 
@@ -671,7 +671,7 @@ describe('SecurityFilterPlugin', () => {
             const plugin = new SecurityFilterPlugin({ mode: 'blacklist', ...config } as any, pluginOptions);
             let middleware: any;
             plugin.register_middlewares({ use: (fn: any) => { middleware = fn; } } as any, {} as any, {} as any);
-            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() } as any;
             const next = jest.fn();
             await middleware({ method: 'GET', url } as any, res, next);
             return { res, next };
@@ -882,7 +882,7 @@ describe('SecurityFilterPlugin', () => {
             plugin.register_middlewares({ use: (fn: any) => { middleware = fn; } } as any, {} as any, {} as any);
 
             for (const url of ['/my-lib/-/my-lib-1.0.0.tgz', '/evil-pkg']) {
-                const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis() } as any;
+                const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() } as any;
                 const next = jest.fn();
                 await middleware({ method: 'GET', url } as any, res, next);
 
@@ -901,6 +901,68 @@ describe('SecurityFilterPlugin', () => {
             pluginOptions.logger.warn.mockClear();
             new SecurityFilterPlugin({ ...rules, dryRun: false }, pluginOptions).destroy();
             expect(warnings()).not.toContain('DRY RUN');
+        });
+    });
+
+    describe('block reason for packages blocked in filter_metadata', () => {
+        const licenses = { allowed: ['MIT'], blocked: [], requireLicense: true };
+        const gplOnly = (name: string): any => ({
+            name,
+            versions: { '1.0.0': { name, version: '1.0.0', license: 'GPL-3.0' } },
+            'dist-tags': { latest: '1.0.0' },
+        });
+
+        /** Run a metadata request; `handler` plays Verdaccio: it calls the filter, then sends the packument. */
+        async function metadataRequest(config: any, name: string, handler: (filter: SecurityFilterPlugin) => Promise<any>) {
+            const middlewarePlugin = new SecurityFilterPlugin(config, pluginOptions);
+            const filterPlugin = new SecurityFilterPlugin(config, pluginOptions); // Verdaccio uses separate instances
+            let middleware: any;
+            middlewarePlugin.register_middlewares({ use: (fn: any) => { middleware = fn; } } as any, {} as any, {} as any);
+
+            const sent: any[] = [];
+            const res: any = {
+                statusCode: 200,
+                status: jest.fn(function (this: any, code: number) { this.statusCode = code; return this; }),
+                json: jest.fn(),
+                removeHeader: jest.fn(),
+                send: jest.fn((body: any) => { sent.push(body); }),
+            };
+            let finished: Promise<void> = Promise.resolve();
+            await middleware({ method: 'GET', url: `/${name}` } as any, res, () => {
+                finished = handler(filterPlugin).then(packument => { res.send(JSON.stringify(packument)); });
+            });
+            await finished;
+            return { res, body: JSON.parse(sent[0]) };
+        }
+
+        it('should turn the response into a 403 that carries the reason', async () => {
+            const { res, body } = await metadataRequest({ mode: 'blacklist', licenses }, 'gpl-lib',
+                filter => filter.filter_metadata(gplOnly('gpl-lib')));
+
+            expect(res.statusCode).toBe(403);
+            expect(res.removeHeader).toHaveBeenCalledWith('ETag');
+            expect(body.error).toBe("Package blocked by security filter: License 'GPL-3.0' is not in allowed list");
+            expect(body.security).toEqual(expect.objectContaining({ blocked: true, license: 'GPL-3.0' }));
+        });
+
+        it('should leave the response alone when the filter did not block during this request', async () => {
+            // an older block of the same package must not leak into a later, allowed response
+            await new SecurityFilterPlugin({ mode: 'blacklist', licenses } as any, pluginOptions).filter_metadata(gplOnly('flip-lib'));
+            await new Promise(resolve => setTimeout(resolve, 5));
+
+            const { res, body } = await metadataRequest({ mode: 'blacklist', licenses }, 'flip-lib',
+                async () => ({ name: 'flip-lib', versions: { '2.0.0': {} } }));
+
+            expect(res.statusCode).toBe(200);
+            expect(Object.keys(body.versions)).toEqual(['2.0.0']);
+        });
+
+        it('should not answer 403 in dry-run mode', async () => {
+            const { res, body } = await metadataRequest({ mode: 'blacklist', licenses, dryRun: true }, 'dry-lib',
+                filter => filter.filter_metadata(gplOnly('dry-lib')));
+
+            expect(res.statusCode).toBe(200);
+            expect(Object.keys(body.versions)).toEqual(['1.0.0']);
         });
     });
 });

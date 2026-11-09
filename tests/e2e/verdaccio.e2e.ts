@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as os from 'os';
 import * as path from 'path';
+import { execFile } from 'child_process';
 import { AddressInfo } from 'net';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -59,6 +60,7 @@ interface Registry {
     get(urlPath: string): Promise<{ status: number; body: any }>;
     request(method: string, urlPath: string, body?: unknown): Promise<{ status: number; body: any }>;
     stop(): Promise<void>;
+    url: string;
 }
 
 async function startRegistry(pluginConfig: Record<string, unknown>): Promise<Registry> {
@@ -104,6 +106,7 @@ async function startRegistry(pluginConfig: Record<string, unknown>): Promise<Reg
     };
 
     return {
+        url: `http://127.0.0.1:${port}`,
         request,
         get: urlPath => request('GET', urlPath),
         async stop() {
@@ -168,7 +171,7 @@ describe('plugin inside a running Verdaccio', () => {
             for (const version of ['1.0.0', '1.5.0']) {
                 const tarball = await registry.get(`/demo-pkg/-/demo-pkg-${version}.tgz`);
                 expect(tarball.status).toBe(403);
-                expect(tarball.body).toEqual(expect.objectContaining({ error: 'Package blocked by security filter', version }));
+                expect(tarball.body).toEqual(expect.objectContaining({ error: expect.stringContaining('Package blocked by security filter: '), version }));
             }
 
             const allowed = await registry.get('/demo-pkg/-/demo-pkg-2.0.0.tgz');
@@ -178,7 +181,8 @@ describe('plugin inside a running Verdaccio', () => {
 
         it('blocks a package by name pattern', async () => {
             const metadata = await registry.get('/evil-pkg');
-            expect(versionsOf(metadata)).toEqual([]);
+            expect(metadata.status).toBe(403);
+            expect(metadata.body.error).toContain('Package blocked by security filter: ');
             expect(metadata.body.security).toEqual(expect.objectContaining({ blocked: true }));
 
             expect((await registry.get('/evil-pkg/-/evil-pkg-1.0.0.tgz')).status).toBe(403);
@@ -186,7 +190,8 @@ describe('plugin inside a running Verdaccio', () => {
 
         it.each(['/@bad/pkg', '/@bad%2fpkg'])('blocks a scoped package requested as %s', async (urlPath) => {
             const metadata = await registry.get(urlPath);
-            expect(versionsOf(metadata)).toEqual([]);
+            expect(metadata.status).toBe(403);
+            expect(metadata.body.error).toContain('Package blocked by security filter: ');
             expect(metadata.body.security).toEqual(expect.objectContaining({ blocked: true }));
 
             expect((await registry.get('/@bad/pkg/-/pkg-1.0.0.tgz')).status).toBe(403);
@@ -203,7 +208,8 @@ describe('plugin inside a running Verdaccio', () => {
             expect((await registry.get('/demo-pkg/-/demo-pkg-1.0.0.tgz')).status).toBe(200);
 
             const blocked = await registry.get('/other-pkg');
-            expect(versionsOf(blocked)).toEqual([]);
+            expect(blocked.status).toBe(403);
+            expect(blocked.body.error).toContain('Package blocked by security filter: ');
             expect(blocked.body.security).toEqual(expect.objectContaining({ blocked: true }));
             expect((await registry.get('/other-pkg/-/other-pkg-1.0.0.tgz')).status).toBe(403);
         });
@@ -310,11 +316,38 @@ describe('plugin inside a running Verdaccio', () => {
             osvHandler = async () => { throw new Error('OSV down'); };
             registry = await startRegistry({ mode: 'blacklist', cveCheck, errorHandling: { onCveCheckError: 'fail-closed' } });
 
+            // Decided inside filter_metadata; the middleware turns Verdaccio's empty packument into a 403.
             const metadata = await registry.get('/demo-pkg');
-            // Verdaccio drops the `security` field that filter_metadata adds, so only the
-            // empty version list reaches the client for blocks decided in the filter layer.
-            expect(versionsOf(metadata)).toEqual([]);
-            expect(metadata.body['dist-tags']).toEqual({});
+            expect(metadata.status).toBe(403);
+            expect(metadata.body.error).toContain('Package blocked by security filter: CVE check failed');
+            expect(metadata.body.security).toEqual(expect.objectContaining({ blocked: true }));
         });
+    });
+
+    describe('block reason', () => {
+        it('answers 403 with the reason when the license check rejects every version', async () => {
+            registry = await startRegistry({ mode: 'blacklist', licenses: { allowed: ['Apache-2.0'], blocked: [], requireLicense: true } });
+
+            const metadata = await registry.get('/demo-pkg');
+
+            expect(metadata.status).toBe(403);
+            expect(metadata.body.error).toBe("Package blocked by security filter: License 'MIT' is not in allowed list");
+        });
+
+        it('is what the npm CLI prints', async () => {
+            registry = await startRegistry({ mode: 'blacklist', licenses: { allowed: ['Apache-2.0'], blocked: [], requireLicense: true } });
+            const project = fs.mkdtempSync(path.join(os.tmpdir(), 'vsf-e2e-npm-'));
+            fs.writeFileSync(path.join(project, 'package.json'), '{"name":"e2e-project","version":"1.0.0"}');
+
+            // Not the sync variant: this process is also the registry npm talks to.
+            const output = await new Promise<string>(resolve => execFile('npm', [
+                'install', 'demo-pkg', '--registry', registry.url, '--cache', path.join(project, '.cache'),
+                '--no-audit', '--no-fund', '--fetch-retries=0',
+            ], { cwd: project, encoding: 'utf8' }, (_error, stdout, stderr) => resolve(stdout + stderr)));
+            fs.rmSync(project, { recursive: true, force: true });
+
+            expect(output).toContain('E403');
+            expect(output).toContain("Package blocked by security filter: License 'MIT' is not in allowed list");
+        }, 60000);
     });
 });
