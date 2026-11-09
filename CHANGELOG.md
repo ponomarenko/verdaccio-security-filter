@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.10](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.9...v1.3.10) (2026-11-09)
+
+
+### Bug Fixes
+
+* **middleware:** exact tarball versions, version rules in metadata, safe patterns ([#47](https://github.com/ponomarenko/verdaccio-security-filter/issues/47)) ([d1774d6](https://github.com/ponomarenko/verdaccio-security-filter/commit/d1774d6ea8f5adf7e52efb4b8ee3e7dc8d43a3bc))
+
 ## [1.3.9](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.3.8...v1.3.9) (2026-11-09)
 
 
