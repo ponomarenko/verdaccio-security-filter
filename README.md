@@ -422,7 +422,7 @@ middlewares:
 | `cveCheck.updateInterval` | `number` | `24` | How long a package's vulnerability data is cached (hours) |
 | `cveCheck.cacheDir` | `string` | `./.security-cache` | Cache directory path |
 
-> **Note on `autoBlock` and dist-tags:** only the vulnerable versions are removed; unaffected versions stay installable. Any dist-tag (including `latest`) that points to a removed version is dropped and **not** re-pointed to another version. If `latest` is vulnerable, `npm install <pkg>` without a version or range will fail - install an explicit safe version or range instead (e.g. `npm install <pkg>@^1.2.0`).
+> **Note on removed versions and dist-tags:** whenever a check removes versions (CVE `autoBlock`, license, author, age, version rules, `whitelist.versions`), the other versions stay installable. The plugin drops every dist-tag that points to a removed version. Verdaccio then points `latest` at the highest version that is left (verified with Verdaccio 6.2), so `npm install <pkg>` keeps working. Other dist-tags that pointed to a removed version are gone.
 
 > **When OSV is unreachable:** a lookup gets one retry with a 5 second timeout each. After a failure the same package is not looked up again for 60 seconds. Previously cached data, even if older than `updateInterval`, keeps being used. With no cached data, `errorHandling.onCveCheckError` decides: `fail-open` serves the package unchecked, `fail-closed` blocks it.
 
@@ -432,7 +432,9 @@ middlewares:
 |--------|------|---------|-------------|
 | `licenses.allowed` | `string[]` | `[]` | Allowed license list |
 | `licenses.blocked` | `string[]` | `[]` | Blocked license list |
-| `licenses.requireLicense` | `boolean` | `false` | Require license field |
+| `licenses.requireLicense` | `boolean` | `true` | Reject versions without a license field |
+
+The license check runs when `licenses.allowed` is not empty. Every version is checked: versions with a rejected license are removed from the metadata, and the package is blocked as a whole only when no version is left.
 
 ### Whitelist Options
 
@@ -480,6 +482,8 @@ middlewares:
 | `authorFilter.blockedRegions` | `string[]` | `[]` | Region codes to block (`ru`, `cn`, `by`, `kp`, `ir`, `sy`, `cu`, `sd`) |
 | `authorFilter.requireVerifiedEmail` | `boolean` | `false` | Require author email information |
 | `authorFilter.warnOnly` | `boolean` | `false` | Only warn, don't block |
+
+Every version is checked against the author rules: versions published by a blocked author are removed from the metadata, and the package is blocked as a whole only when no version is left.
 
 ### Error Handling Options
 

@@ -1,4 +1,4 @@
-import { IPluginMiddleware, IPluginStorageFilter, PluginOptions, IBasicAuth, IStorageManager, Package } from '@verdaccio/types';
+import { IPluginMiddleware, IPluginStorageFilter, PluginOptions, IBasicAuth, IStorageManager, Package, Version } from '@verdaccio/types';
 import * as semver from 'semver';
 import { readFileSync } from 'fs';
 import { join } from 'path';
@@ -402,6 +402,26 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     }
 
     /**
+     * Run a per-version check over every version and collect the ones it rejects.
+     * `first` is the result to report for the package: the latest version's if it was rejected.
+     * @private
+     */
+    private _rejectedVersions<T extends { allowed: boolean }>(pkg: Package, check: (data: Version) => T) {
+        const all = Object.entries(pkg.versions || {});
+        const results = all
+            .map(([version, data]) => [version, check(data)] as [string, T])
+            .filter(([, result]) => !result.allowed);
+        const latest = results.find(([version]) => version === pkg['dist-tags']?.latest);
+
+        return {
+            results,
+            versions: results.map(([version]) => version),
+            first: (latest || results[0])?.[1],
+            all: all.length > 0 && results.length === all.length,
+        };
+    }
+
+    /**
      * Filter package metadata before returning to client
      * This provides CVE, License, and Age checking when metadata is available
      */
@@ -479,20 +499,24 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 }
             }
 
-            // 3. License Check - check latest version
+            // 3. License Check - every version; only the offending ones are removed
             if (this.config.licenses && this.config.licenses.allowed && this.config.licenses.allowed.length > 0) {
-                const latestVersion = pkg['dist-tags']?.latest;
-                if (latestVersion && pkg.versions?.[latestVersion]) {
-                    const versionData = pkg.versions[latestVersion];
-                    const licenseResult = this.licenseChecker.checkLicense(versionData);
+                const rejected = this._rejectedVersions(pkg, data => this.licenseChecker.checkLicense(data));
 
-                    if (!licenseResult.allowed) {
-                        const reason = licenseResult.reason || 'License not allowed';
-                        this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${reason}`);
-                        this.metrics.recordBlock(packageName, '*', reason);
+                if (rejected.all) {
+                    const reason = rejected.first.reason || 'License not allowed';
+                    this.logger.warn(`[filter_metadata] LICENSE BLOCKED: ${packageName} - ${reason}`);
+                    this.metrics.recordBlock(packageName, '*', reason);
 
-                        return this._blockedPackage(pkg, reason, { license: licenseResult.license });
+                    return this._blockedPackage(pkg, reason, { license: rejected.first.license });
+                }
+
+                if (rejected.versions.length > 0) {
+                    this.logger.warn(`[filter_metadata] LICENSE FILTERED: ${packageName}: ${rejected.versions.join(', ')}`);
+                    for (const [version, result] of rejected.results) {
+                        this.metrics.recordBlock(packageName, version, result.reason || 'License not allowed');
                     }
+                    pkg = this._removeVersions(pkg, rejected.versions);
                 }
             }
 
@@ -531,33 +555,40 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
             // 5. Author Filter Check
             if (this.config.authorFilter?.enabled) {
-                const latestVersion = pkg['dist-tags']?.latest;
-                if (latestVersion && pkg.versions?.[latestVersion]) {
-                    const versionData = pkg.versions[latestVersion];
-                    const authorResult = this.authorChecker.checkAuthor(versionData);
+                const rejected = this._rejectedVersions(pkg, data => this.authorChecker.checkAuthor(data));
 
-                    if (!authorResult.allowed && !this.config.authorFilter.warnOnly) {
-                        const reason = authorResult.reason || 'Author not allowed';
-                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${reason}`);
+                if (rejected.versions.length > 0 && this.config.authorFilter.warnOnly) {
+                    this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName}: ${rejected.versions.join(', ')} - ${rejected.first.reason} (warn-only mode)`);
+                } else if (rejected.versions.length > 0) {
+                    for (const [version, result] of rejected.results) {
                         this.metrics.record({
                             timestamp: new Date().toISOString(),
                             event: 'author_blocked',
                             packageName,
-                            version: latestVersion,
-                            reason,
+                            version: rejected.all ? '*' : version,
+                            reason: result.reason || 'Author not allowed',
                             metadata: {
-                                blockedBy: authorResult.blockedBy,
-                                authorInfo: authorResult.authorInfo,
+                                blockedBy: result.blockedBy,
+                                authorInfo: result.authorInfo,
                             },
                         });
+                        if (rejected.all) {
+                            break; // one event for the whole package
+                        }
+                    }
+
+                    if (rejected.all) {
+                        const reason = rejected.first.reason || 'Author not allowed';
+                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${reason}`);
 
                         return this._blockedPackage(pkg, reason, {
-                            blockedBy: authorResult.blockedBy,
-                            authorInfo: authorResult.authorInfo,
+                            blockedBy: rejected.first.blockedBy,
+                            authorInfo: rejected.first.authorInfo,
                         });
-                    } else if (!authorResult.allowed && this.config.authorFilter.warnOnly) {
-                        this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName} - ${authorResult.reason} (warn-only mode)`);
                     }
+
+                    this.logger.warn(`[filter_metadata] AUTHOR FILTERED: ${packageName}: ${rejected.versions.join(', ')}`);
+                    pkg = this._removeVersions(pkg, rejected.versions);
                 }
             }
 

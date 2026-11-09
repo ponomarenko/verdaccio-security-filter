@@ -46,7 +46,7 @@ function createUplink(): http.Server {
         const versions = Object.fromEntries(VERSIONS.map(version => [version, {
             name,
             version,
-            license: 'MIT',
+            license: version === '1.0.0' ? 'GPL-3.0' : 'MIT',
             dist: { tarball: `${base}/${name}/-/${file}-${version}.tgz`, shasum: 'da39a3ee5e6b4b0d3255bfef95601890afd80709' },
         }]));
         res.setHeader('content-type', 'application/json');
@@ -236,6 +236,17 @@ describe('plugin inside a running Verdaccio', () => {
         });
     });
 
+    describe('license check', () => {
+        it('removes only the versions with a disallowed license', async () => {
+            registry = await startRegistry({ mode: 'blacklist', licenses: { allowed: ['MIT'], blocked: [], requireLicense: true } });
+
+            const metadata = await registry.get('/demo-pkg');
+
+            expect(versionsOf(metadata)).toEqual(['1.5.0', '2.0.0']);
+            expect(metadata.body['dist-tags']).toEqual({ latest: '2.0.0' });
+        });
+    });
+
     describe('CVE check', () => {
         const fixedIn2 = {
             id: 'GHSA-e2e',
@@ -251,6 +262,21 @@ describe('plugin inside a running Verdaccio', () => {
             expect(versionsOf(await registry.get('/demo-pkg'))).toEqual(['2.0.0']);
             expect(versionsOf(await registry.get('/demo-pkg'))).toEqual(['2.0.0']);
             expect(osvCalls).toBe(1);
+        });
+
+        it('lets Verdaccio re-point latest when the latest version is the vulnerable one', async () => {
+            osvHandler = async () => Response.json({ vulns: [{
+                id: 'GHSA-e2e-latest',
+                database_specific: { severity: 'HIGH' },
+                affected: [{ ranges: [{ type: 'SEMVER', events: [{ introduced: '2.0.0' }] }] }],
+            }] });
+            registry = await startRegistry({ mode: 'blacklist', cveCheck });
+
+            const metadata = await registry.get('/demo-pkg');
+
+            // The plugin drops the dist-tag; Verdaccio points latest at the highest version left.
+            expect(versionsOf(metadata)).toEqual(['1.0.0', '1.5.0']);
+            expect(metadata.body['dist-tags']).toEqual({ latest: '1.5.0' });
         });
 
         it('serves the package unchecked when OSV is down and onCveCheckError is fail-open', async () => {
