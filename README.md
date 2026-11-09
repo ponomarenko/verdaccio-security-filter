@@ -150,46 +150,43 @@ npm link
 
 ## 🔧 How It Works
 
-This plugin implements **two layers of protection** to block malicious packages:
+The plugin works in two layers. Configure both: the same settings go under `filters` and under `middlewares`.
 
 ### Layer 1: Metadata Filtering (`filter_metadata`)
-When a client requests package information (e.g., `npm info lodash`), the plugin:
-1. Checks if the package is allowed (whitelist mode)
-2. Validates against blocked patterns, scopes, and age requirements
-3. **Throws HTTP 404 error** for completely blocked packages (patterns, scopes, whitelist violations)
-4. Filters out specific blocked versions from the versions list for partial blocks
+Runs inside Verdaccio when package metadata is read, so it sees every version:
+1. Removes versions blocked by `blockedVersions`, `versionRangeRules` and `whitelist.versions`
+2. Removes versions rejected by the CVE, license, age and author checks
+3. Blocks the package as a whole when no version is left, or when the package itself is not allowed
 
-**Result**: Blocked packages return "404 Not Found" - as if they don't exist in the registry.
+npm then resolves ranges against the versions that are left.
 
-### Layer 2: Middleware Interception (`register_middlewares`)
-When a client tries to download a tarball file (e.g., during `npm install`), the plugin:
-1. Intercepts **all HTTP requests** early in the middleware chain
-2. Extracts package name and version from the request URL
-3. Applies all security checks (whitelist, patterns, scopes, blocked versions, range rules)
-4. Returns **403 Forbidden** for blocked packages with detailed error message
+### Layer 2: Middleware (`register_middlewares`)
+Runs first on every `GET` request:
+1. Blocks packages by name: whitelist, patterns, scopes
+2. Blocks tarball downloads of blocked versions, even if a client has stale metadata or a lockfile
+3. Turns a whole-package block from layer 1 into an HTTP error that carries the reason
 
-**Result**: Even if metadata is cached, tarball downloads are blocked at the HTTP level.
+### What a client sees
 
-### Why Both Layers?
+A removed version is simply missing from the metadata. A blocked package or tarball is answered with **403 Forbidden**, and the reason is in the `error` field, which npm prints:
 
-- **Metadata filtering (404)** - Makes blocked packages invisible to npm/yarn
-- **Middleware interception (403)** - Blocks tarball downloads even with cached metadata
-- Together, they provide **complete protection** against blocked packages being installed in any way
-
-Example flow when a blocked package is requested:
 ```
 npm install hawk
-→ GET /hawk (metadata request)
-→ [Security Filter] Blocked hawk@* - Package is not in whitelist
-→ HTTP 404 Not Found: Package blocked by security filter: Not in whitelist
-→ npm ERR! 404 Not Found - GET http://localhost:4873/hawk
-
-npm install (with hawk as dependency)
-→ GET /hawk/-/hawk-9.0.1.tgz (tarball request)
-→ [Middleware] Tarball request: hawk/hawk-9.0.1.tgz
-→ [Security Filter] Blocked hawk@9.0.1 - Package is not in whitelist
-→ HTTP 403 Forbidden: {"error": "Package blocked by security filter", "reason": "Package is not in whitelist"}
+npm error code E403
+npm error 403 403 Forbidden - GET http://localhost:4873/hawk - Package blocked by security filter: Package is not in whitelist
 ```
+
+```json
+{
+  "error": "Package blocked by security filter: License 'GPL-3.0' is not in allowed list",
+  "package": "some-package",
+  "reason": "License 'GPL-3.0' is not in allowed list",
+  "security": { "blocked": true, "reason": "...", "plugin": { "name": "verdaccio-security-filter", "version": "..." } },
+  "timestamp": "2026-01-15T10:30:00.000Z"
+}
+```
+
+The 403 for packages blocked in layer 1 (CVE, license, age, author, fail-closed errors) needs the middleware. With only `filters` configured, such a package is returned with an empty version list and npm reports "No versions available" without a reason.
 
 ## ⚙️ Configuration
 
