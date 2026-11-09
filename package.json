@@ -28,6 +28,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:e2e": "npm run build && jest --testMatch \"**/*.e2e.ts\" --coverage=false",
     "debug:verdaccio": "node --inspect-brk $(which verdaccio)",
     "debug:build": "npm run build && npm link",
     "prepack": "npm run build",
