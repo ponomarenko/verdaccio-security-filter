@@ -50,7 +50,6 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             this.config.errorHandling = {
                 onFilterError: 'fail-open',
                 onCveCheckError: 'fail-open',
-                onLicenseCheckError: 'fail-open',
             };
         }
 
@@ -73,11 +72,8 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         this.securityRules = {
             blockedVersions: this.config.blockedVersions || [],
             blockedPatterns: this.config.blockedPatterns || [],
-            minPackageSize: this.config.minPackageSize || 0,
-            maxPackageSize: this.config.maxPackageSize || 100 * 1024 * 1024, // 100MB
             allowedScopes: this.config.allowedScopes || [],
             blockedScopes: this.config.blockedScopes || [],
-            enforceChecksum: this.config.enforceChecksum !== false,
             versionRangeRules: this._parseVersionRangeRules(this.config.versionRangeRules || [])
         };
 

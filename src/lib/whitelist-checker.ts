@@ -13,7 +13,6 @@ export class WhitelistChecker {
             packages: config?.packages || [],
             patterns: config?.patterns || [],
             versions: config?.versions || {},
-            autoApprove: config?.autoApprove,
         };
     }
 
@@ -110,41 +109,15 @@ export class WhitelistChecker {
     }
 
     /**
-     * Check if package meets auto-approve criteria
-     * Note: This is a placeholder. Real implementation would require
-     * integration with npm registry API to fetch download stats, etc.
-     */
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    async meetsAutoApproveCriteria(_packageName: string): Promise<{ approved: boolean; reason?: string }> {
-        if (!this.config.autoApprove) {
-            return { approved: false, reason: 'Auto-approve not configured' };
-        }
-
-        // Placeholder for npm registry API integration
-        // In a real implementation, you would:
-        // 1. Fetch package info from npm registry
-        // 2. Check weekly downloads against minDownloads
-        // 3. Check GitHub stars against minStars
-        // 4. Check if publisher is verified
-
-        return {
-            approved: false,
-            reason: 'Auto-approve requires npm registry API integration (not implemented)',
-        };
-    }
-
-    /**
      * Get whitelist summary
      */
     getSummary(): {
         totalPackages: number;
         totalPatterns: number;
-        hasAutoApprove: boolean;
     } {
         return {
             totalPackages: this.config.packages.length,
             totalPatterns: this.config.patterns.length,
-            hasAutoApprove: !!this.config.autoApprove,
         };
     }
 }

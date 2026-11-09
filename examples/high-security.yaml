@@ -44,8 +44,6 @@ filters:
       enabled: true
       databases:
         - osv
-        - github
-        - snyk           # Requires API key
       severity:
         - low            # Block ALL severity levels
         - medium
@@ -131,7 +129,7 @@ filters:
       # Lodash vulnerabilities
       - package: lodash
         range: "<4.17.21"
-        strategy: block        # No fallback in high-security mode
+        strategy: block
         reason: "Multiple CVEs - must update manually"
 
       # Minimist vulnerability
@@ -166,10 +164,6 @@ filters:
       - "@malicious"
       - "@suspicious"
 
-    # Strict size limits
-    minPackageSize: 10000         # 10KB minimum (prevent empty packages)
-    maxPackageSize: 10485760      # 10MB maximum (prevent bloat)
-
     # Aggressive pattern blocking
     blockedPatterns:
       # Malicious patterns
@@ -203,9 +197,6 @@ filters:
       enabled: true
       output: file
       filePath: /var/log/verdaccio/security-metrics.jsonl
-
-    # Strict checksum enforcement
-    enforceChecksum: true
 
     # Blocked versions (explicit list of known bad versions)
     blockedVersions:

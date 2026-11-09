@@ -1,16 +1,18 @@
-import { Config, Version } from '@verdaccio/types';
+import { Config } from '@verdaccio/types';
 
 export interface VersionRangeRule {
     package: string;
     range: string;
+    /** 'fallback' is deprecated and behaves like 'block'. */
     strategy: 'block' | 'fallback';
+    /** @deprecated ignored */
     fallbackVersion?: string;
     reason?: string;
 }
 
 export interface CVECheckConfig {
     enabled: boolean;
-    databases: ('osv' | 'snyk' | 'github')[];
+    databases: 'osv'[];
     severity: ('low' | 'medium' | 'high' | 'critical')[];
     autoBlock: boolean;
     updateInterval?: number; // hours
@@ -21,11 +23,6 @@ export interface WhitelistConfig {
     packages: string[];
     patterns: string[];
     versions?: Record<string, string>;
-    autoApprove?: {
-        minDownloads?: number;
-        minStars?: number;
-        verifiedPublisher?: boolean;
-    };
 }
 
 export interface LicenseConfig {
@@ -69,11 +66,8 @@ export interface SecurityConfig extends Config {
     // Existing fields
     blockedVersions?: string[];
     blockedPatterns?: string[];
-    minPackageSize?: number;
-    maxPackageSize?: number;
     allowedScopes?: string[];
     blockedScopes?: string[];
-    enforceChecksum?: boolean;
     versionRangeRules?: VersionRangeRule[];
 
     // Phase 2: New features
@@ -90,36 +84,15 @@ export interface SecurityConfig extends Config {
     errorHandling?: {
         onFilterError?: 'fail-open' | 'fail-closed';
         onCveCheckError?: 'fail-open' | 'fail-closed';
-        onLicenseCheckError?: 'fail-open' | 'fail-closed';
     };
 }
 
 export interface SecurityRules {
     blockedVersions: string[];
     blockedPatterns: string[];
-    minPackageSize: number;
-    maxPackageSize: number;
     allowedScopes: string[];
     blockedScopes: string[];
-    enforceChecksum: boolean;
     versionRangeRules: VersionRangeRule[];
-}
-
-export interface VersionData extends Version {
-    /** Internal flag for fallback versions */
-    _fallback?: boolean;
-
-    /** Original version this is falling back from */
-    _fallbackFrom?: string;
-
-    /** Reason for fallback */
-    _fallbackReason?: string;
-}
-
-export interface FilterResult {
-    versions: Record<string, VersionData>;
-    blockedVersions: string[];
-    fallbacksApplied: Array<{ original: string; fallback: string }>;
 }
 
 export interface CVEVulnerability {

@@ -31,7 +31,6 @@ filters:
       enabled: true
       databases:
         - osv
-        - github
       severity:
         - high
         - critical
@@ -64,14 +63,12 @@ filters:
     versionRangeRules:
       - package: lodash
         range: "<4.17.21"
-        strategy: fallback
-        fallbackVersion: "4.17.21"
+        strategy: block
         reason: "Multiple CVEs in older versions"
 
       - package: minimist
         range: "<1.2.6"
-        strategy: fallback
-        fallbackVersion: "1.2.6"
+        strategy: block
         reason: "CVE-2021-44906: Prototype pollution"
 
       - package: node-fetch
@@ -85,10 +82,6 @@ filters:
       - "@types"
     blockedScopes:
       - "@malicious"
-
-    # Strict size limits
-    minPackageSize: 1000          # 1KB minimum
-    maxPackageSize: 104857600     # 100MB maximum
 
     # Pattern blocking for typosquatting protection
     blockedPatterns:
@@ -108,9 +101,6 @@ filters:
       enabled: true
       output: file
       filePath: /var/log/verdaccio/security-metrics.json
-
-    # Checksum enforcement
-    enforceChecksum: true
 
 # Layer 2: Middleware interception (register_middlewares)
 # This blocks tarball downloads even if metadata is cached
