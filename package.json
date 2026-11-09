@@ -55,7 +55,7 @@
   },
   "overrides": {
     "qs": "6.16.0",
-    "@cypress/request": "latest"
+    "@cypress/request": "3.0.10"
   },
   "author": {
     "name": "Vitaliy Ponomarenko",

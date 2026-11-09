@@ -61,20 +61,6 @@ export class MetricsCollector {
     }
 
     /**
-     * Record a fallback event
-     */
-    recordFallback(packageName: string, fromVersion: string, toVersion: string, reason: string): void {
-        this.record({
-            timestamp: new Date().toISOString(),
-            event: 'fallback',
-            packageName,
-            version: fromVersion,
-            reason,
-            metadata: { toVersion },
-        });
-    }
-
-    /**
      * Record a publish rejection
      */
     recordPublishRejected(packageName: string, version: string, reason: string): void {
@@ -84,20 +70,6 @@ export class MetricsCollector {
             packageName,
             version,
             reason,
-        });
-    }
-
-    /**
-     * Record a CVE detection
-     */
-    recordCVE(packageName: string, version: string, cveId: string, severity: string): void {
-        this.record({
-            timestamp: new Date().toISOString(),
-            event: 'cve_detected',
-            packageName,
-            version,
-            reason: `CVE ${cveId} (${severity})`,
-            metadata: { cveId, severity },
         });
     }
 

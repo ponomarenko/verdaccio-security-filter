@@ -118,7 +118,7 @@ versionRangeRules:
 
 **Behavior:**
 - Semver range matching
-- Block or fallback strategies
+- Matching versions are hidden from metadata and their tarballs are blocked
 
 ### Request Flow
 
@@ -181,16 +181,15 @@ cveCheck:
 ```
 
 **Process:**
-1. Queries OSV (Open Source Vulnerabilities) API
-2. Checks each version for known CVEs
+1. Queries the OSV (Open Source Vulnerabilities) API once per package
+2. Matches each version against the returned ranges locally
 3. Filters by severity level
-4. Auto-blocks if configured
+4. Removes the vulnerable versions if `autoBlock` is set
 
 **Features:**
-- Caching with configurable TTL
-- Retry logic with exponential backoff
-- Rate limiting protection
-- Offline fallback
+- Per-package cache with configurable TTL
+- One retry, 5 second timeout, 60 second back-off after a failure
+- Stale cached data is used while OSV is unreachable
 
 #### 2. License Compliance
 ```yaml
@@ -253,7 +252,6 @@ The plugin supports configurable error handling:
 errorHandling:
   onFilterError: fail-open      # Allow on error
   onCveCheckError: fail-open    # Allow if CVE check fails
-  onLicenseCheckError: fail-closed  # Block if license check fails
 ```
 
 #### Fail-Open (Default)
@@ -399,7 +397,6 @@ middlewares:
     errorHandling:
       onFilterError: fail-closed
       onCveCheckError: fail-closed
-      onLicenseCheckError: fail-closed
 ```
 
 **Rationale:**
@@ -469,11 +466,7 @@ metrics:
 ```
 
 **Metrics tracked:**
-- `block` - Packages blocked
-- `fallback` - Version fallbacks applied
-- `cve_detected` - CVE vulnerabilities found
-- `license_blocked` - License violations
-- `package_too_new` - Age restrictions
+- `block` - Packages or versions blocked by rules, CVE, license or age checks (see `reason`)
 
 ## Security Guarantees
 

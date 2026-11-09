@@ -16,10 +16,6 @@ filters:
       - "^evil-.*"
       - ".*-backdoor$"
 
-    # Size limits to prevent accidentally installing huge packages
-    minPackageSize: 100           # 100 bytes minimum
-    maxPackageSize: 52428800      # 50MB maximum
-
     # Simple logging
     logger:
       level: info

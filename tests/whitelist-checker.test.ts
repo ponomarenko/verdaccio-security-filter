@@ -137,16 +137,12 @@ describe('WhitelistChecker', () => {
             const checker = new WhitelistChecker({
                 packages: ['lodash', 'express', 'react'],
                 patterns: ['^@company/.*', '^@types/.*'],
-                autoApprove: {
-                    minDownloads: 1000,
-                },
             });
 
             const summary = checker.getSummary();
 
             expect(summary.totalPackages).toBe(3);
             expect(summary.totalPatterns).toBe(2);
-            expect(summary.hasAutoApprove).toBe(true);
         });
 
         it('should handle empty whitelist', () => {
@@ -159,30 +155,6 @@ describe('WhitelistChecker', () => {
 
             expect(summary.totalPackages).toBe(0);
             expect(summary.totalPatterns).toBe(0);
-            expect(summary.hasAutoApprove).toBe(false);
-        });
-    });
-
-    describe('auto-approve criteria', () => {
-        let checker: WhitelistChecker;
-
-        beforeEach(() => {
-            checker = new WhitelistChecker({
-                packages: [],
-                patterns: [],
-                autoApprove: {
-                    minDownloads: 10000,
-                    minStars: 100,
-                    verifiedPublisher: true,
-                },
-            });
-        });
-
-        it('should return not approved with placeholder message', async () => {
-            const result = await checker.meetsAutoApproveCriteria('some-package');
-
-            expect(result.approved).toBe(false);
-            expect(result.reason).toContain('not implemented');
         });
     });
 

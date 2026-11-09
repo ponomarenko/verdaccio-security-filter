@@ -36,17 +36,15 @@ This plugin implements **two independent security layers** for complete protecti
 
 #### 🔒 Version Management
 - **Version Range Blocking** - Block vulnerable versions using semver ranges
-  - **Block Strategy**: Completely remove versions from registry
-  - **Fallback Strategy**: Transparently redirect to safe versions
+  - Matching versions are hidden from metadata and their tarballs return 403, so npm resolves to the highest allowed version
 - **Exact Version Blocking** - Block specific package@version combinations
 - **Semver Support** - Full semver syntax (`^`, `~`, `>`, `>=`, `<`, `<=`, `x`, `*`)
 
 #### 🛡️ CVE & Vulnerability Scanning
 - **OSV Database Integration** - Automatic vulnerability scanning via [OSV API](https://osv.dev/)
 - **Severity Filtering** - Filter by severity: `low`, `medium`, `high`, `critical`
-- **Auto-Block Vulnerable Packages** - Automatically block packages with known CVEs
-- **Caching System** - Configurable cache with update intervals
-- **Multiple Database Support** - Ready for OSV, Snyk, GitHub Advisory
+- **Auto-Block Vulnerable Versions** - Remove versions with known CVEs from metadata
+- **Caching System** - One OSV lookup per package, cached per package with a configurable refresh interval
 
 #### ⚖️ License Compliance
 - **License Filtering** - Enforce license policies with allowed/blocked lists
@@ -62,7 +60,7 @@ This plugin implements **two independent security layers** for complete protecti
 
 #### 📊 Monitoring & Observability
 - **Enhanced Logging** - Configurable log levels (`debug`, `info`, `warn`, `error`)
-- **Metrics Collection** - Track security events (blocks, fallbacks, CVEs, license violations)
+- **Metrics Collection** - Track security events (blocks with their reason, author blocks)
 - **Security Audit Trail** - Detailed logging of all security decisions
 - **Customizable Output** - Log to stdout or file in JSON format
 
@@ -83,9 +81,7 @@ This plugin implements **two independent security layers** for complete protecti
   - Prevents blocked packages from being installed as dependencies
   - Intercepts requests to `/:package/-/:filename.tgz` routes
   - Returns 403 Forbidden with detailed error messages
-- **Size Limits** - Enforce minimum and maximum package sizes
 - **Metadata Validation** - Verify package integrity and detect dangerous characters
-- **Checksum Enforcement** - Ensure package integrity
 
 #### ⚙️ Reliability & Error Handling
 - **Fail-Safe/Fail-Closed Configuration** - Choose error handling strategy
@@ -274,7 +270,6 @@ filters:
       enabled: true
       databases:
         - osv
-        - github
       severity:
         - high
         - critical
@@ -304,8 +299,7 @@ filters:
     versionRangeRules:
       - package: lodash
         range: "<4.17.21"
-        strategy: fallback
-        fallbackVersion: "4.17.21"
+        strategy: block
         reason: "CVE-2021-23337: Command injection"
 
       - package: minimist
@@ -379,7 +373,7 @@ filters:
 
     cveCheck:
       enabled: true
-      databases: [osv, github, snyk]
+      databases: [osv]
       severity: [low, medium, high, critical]  # Block ALL
       autoBlock: true
       updateInterval: 6                         # Check every 6 hours
@@ -388,9 +382,6 @@ filters:
       allowed: [MIT, Apache-2.0, BSD-3-Clause]
       blocked: [GPL-3.0, AGPL-3.0, LGPL-3.0]
       requireLicense: true
-
-    minPackageSize: 10000      # 10KB minimum
-    maxPackageSize: 10485760   # 10MB maximum
 
     logger:
       level: debug             # Log everything
@@ -419,22 +410,21 @@ middlewares:
 | `blockedPatterns` | `string[]` | `[]` | Regex patterns for package names |
 | `allowedScopes` | `string[]` | `[]` | Allowed package scopes |
 | `blockedScopes` | `string[]` | `[]` | Blocked package scopes |
-| `minPackageSize` | `number` | `0` | Minimum package size in bytes |
-| `maxPackageSize` | `number` | `104857600` | Maximum package size (100MB) |
-| `enforceChecksum` | `boolean` | `true` | Enforce checksum validation |
 
 ### CVE Check Options
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `cveCheck.enabled` | `boolean` | `false` | Enable CVE scanning |
-| `cveCheck.databases` | `string[]` | `['osv']` | Databases: `osv`, `snyk`, `github` |
+| `cveCheck.databases` | `string[]` | `['osv']` | Vulnerability databases. Only `osv` is implemented; it already includes GitHub Security Advisories |
 | `cveCheck.severity` | `string[]` | `['high', 'critical']` | Severity levels to check |
 | `cveCheck.autoBlock` | `boolean` | `false` | Remove vulnerable versions from metadata (whole package blocked if every version is vulnerable) |
-| `cveCheck.updateInterval` | `number` | `24` | Cache update interval (hours) |
+| `cveCheck.updateInterval` | `number` | `24` | How long a package's vulnerability data is cached (hours) |
 | `cveCheck.cacheDir` | `string` | `./.security-cache` | Cache directory path |
 
 > **Note on `autoBlock` and dist-tags:** only the vulnerable versions are removed; unaffected versions stay installable. Any dist-tag (including `latest`) that points to a removed version is dropped and **not** re-pointed to another version. If `latest` is vulnerable, `npm install <pkg>` without a version or range will fail - install an explicit safe version or range instead (e.g. `npm install <pkg>@^1.2.0`).
+
+> **When OSV is unreachable:** a lookup gets one retry with a 5 second timeout each. After a failure the same package is not looked up again for 60 seconds. Previously cached data, even if older than `updateInterval`, keeps being used. With no cached data, `errorHandling.onCveCheckError` decides: `fail-open` serves the package unchecked, `fail-closed` blocks it.
 
 ### License Options
 
@@ -496,8 +486,7 @@ middlewares:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `errorHandling.onFilterError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when filter errors occur |
-| `errorHandling.onCveCheckError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when CVE check fails |
-| `errorHandling.onLicenseCheckError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when license check fails |
+| `errorHandling.onCveCheckError` | `'fail-open' \| 'fail-closed'` | `'fail-open'` | Strategy when the vulnerability lookup fails and no cached data exists |
 
 **Error Handling Strategies:**
 - **fail-open** (Default): Allow packages through on errors (prioritizes availability)
@@ -509,19 +498,16 @@ middlewares:
 errorHandling:
   onFilterError: fail-closed
   onCveCheckError: fail-closed
-  onLicenseCheckError: fail-closed
 
 # Development: Availability-first approach
 errorHandling:
   onFilterError: fail-open
   onCveCheckError: fail-open
-  onLicenseCheckError: fail-open
 
-# Balanced: Block only on license failures
+# Balanced: block only when vulnerability data is unavailable
 errorHandling:
   onFilterError: fail-open
-  onCveCheckError: fail-open
-  onLicenseCheckError: fail-closed
+  onCveCheckError: fail-closed
 ```
 
 ### Version Range Rules
@@ -530,8 +516,7 @@ errorHandling:
 {
   package: string;           // Package name
   range: string;             // Semver range
-  strategy: 'block' | 'fallback';
-  fallbackVersion?: string;  // Required for fallback strategy
+  strategy: 'block';         // 'fallback' is deprecated and behaves like 'block'
   reason?: string;           // Explanation for blocking
 }
 ```
@@ -586,12 +571,7 @@ npm run build -- --watch
 
 When metrics are enabled, the plugin tracks:
 
-- `block` - Packages blocked by version/pattern/scope rules
-- `fallback` - Versions redirected to safe alternatives
-- `publish_rejected` - Publish attempts rejected
-- `cve_detected` - CVE vulnerabilities found
-- `license_blocked` - Packages blocked by license rules
-- `package_too_new` - Packages/versions blocked due to age restrictions
+- `block` - Packages or versions blocked by rules, CVE, license or age checks; the `reason` field says which
 - `author_blocked` - Packages blocked due to author/region filtering
 
 Example metrics output:
@@ -621,16 +601,17 @@ versionRangeRules:
     reason: "CVE-2021-23337: Command injection vulnerability"
 ```
 
-### 2. Transparent Security Patches (Fallback)
+### 2. Steer Installs to a Patched Version
 
 ```yaml
 versionRangeRules:
   - package: axios
     range: "0.21.1"
-    strategy: fallback
-    fallbackVersion: "0.21.4"
+    strategy: block
     reason: "SSRF vulnerability fix"
 ```
+
+The blocked version disappears from the package metadata, so a range such as `axios@^0.21.0` resolves to the newest allowed version. A lockfile pinned to the blocked version fails with 403 until it is updated.
 
 ### 3. Enforce Corporate License Policy
 
@@ -665,7 +646,7 @@ whitelist:
 ```yaml
 cveCheck:
   enabled: true
-  databases: [osv, github]
+  databases: [osv]
   severity: [high, critical]
   autoBlock: true
   updateInterval: 12
