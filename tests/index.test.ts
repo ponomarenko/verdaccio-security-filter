@@ -704,6 +704,25 @@ describe('SecurityFilterPlugin', () => {
             expect(blocked.res.status).toHaveBeenCalledWith(403);
         });
 
+        it('should hide versions outside whitelist.versions from metadata', async () => {
+            const plugin = new SecurityFilterPlugin({
+                mode: 'whitelist',
+                whitelist: { packages: ['my-lib', 'free-lib'], patterns: [], versions: { 'my-lib': '^2.0.0' } },
+            } as any, pluginOptions);
+            const metadata = (name: string) => ({
+                name,
+                versions: Object.fromEntries(['1.0.0', '2.0.0', '2.1.0', '3.0.0'].map(v => [v, { name, version: v }])),
+                'dist-tags': { latest: '3.0.0', stable: '2.1.0' },
+            } as any);
+
+            const constrained: any = await plugin.filter_metadata(metadata('my-lib'));
+            const unconstrained: any = await plugin.filter_metadata(metadata('free-lib'));
+
+            expect(Object.keys(constrained.versions)).toEqual(['2.0.0', '2.1.0']);
+            expect(constrained['dist-tags']).toEqual({ stable: '2.1.0' });
+            expect(Object.keys(unconstrained.versions)).toHaveLength(4);
+        });
+
         it.each(['block', 'fallback'])('should hide versions matched by a %s rule or blockedVersions from metadata', async (strategy) => {
             const plugin = new SecurityFilterPlugin({
                 mode: 'blacklist',

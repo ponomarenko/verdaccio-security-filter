@@ -218,6 +218,24 @@ describe('plugin inside a running Verdaccio', () => {
         });
     });
 
+    describe('whitelist version constraints', () => {
+        it('lists only versions inside whitelist.versions and refuses the other tarballs', async () => {
+            registry = await startRegistry({
+                mode: 'whitelist',
+                whitelist: { packages: ['demo-pkg'], patterns: [], versions: { 'demo-pkg': '^1.0.0' } },
+            });
+
+            const metadata = await registry.get('/demo-pkg');
+            expect(versionsOf(metadata)).toEqual(['1.0.0', '1.5.0']);
+            // The plugin drops the dist-tag of a removed version; Verdaccio then points `latest`
+            // at the highest version that is left.
+            expect(metadata.body['dist-tags']).toEqual({ latest: '1.5.0' });
+
+            expect((await registry.get('/demo-pkg/-/demo-pkg-1.5.0.tgz')).status).toBe(200);
+            expect((await registry.get('/demo-pkg/-/demo-pkg-2.0.0.tgz')).status).toBe(403);
+        });
+    });
+
     describe('CVE check', () => {
         const fixedIn2 = {
             id: 'GHSA-e2e',

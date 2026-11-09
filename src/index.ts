@@ -420,11 +420,14 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 return this._blockedPackage(pkg, blockResult.reason, { rules: this._getAppliedRules(packageName) });
             }
 
-            // 1b. Hide versions blocked by blockedVersions / versionRangeRules, so npm resolves
-            // to an allowed version instead of picking a blocked one and failing on the tarball.
-            if (this.securityRules.blockedVersions.length > 0 || this.securityRules.versionRangeRules.length > 0) {
-                const ruleBlocked = Object.keys(pkg.versions || {})
-                    .filter(version => this._versionBlockReason(packageName, version) !== null);
+            // 1b. Hide versions blocked by blockedVersions / versionRangeRules / whitelist.versions, so npm
+            // resolves to an allowed version instead of picking a blocked one and failing on the tarball.
+            const whitelistMode = this.config.mode === 'whitelist';
+            if (whitelistMode || this.securityRules.blockedVersions.length > 0 || this.securityRules.versionRangeRules.length > 0) {
+                const ruleBlocked = Object.keys(pkg.versions || {}).filter(version =>
+                    this._versionBlockReason(packageName, version) !== null ||
+                    (whitelistMode && !this.whitelistChecker.isWhitelisted(packageName, version).allowed)
+                );
 
                 if (ruleBlocked.length > 0) {
                     this.logger.warn(`[filter_metadata] RULE FILTERED: ${packageName}: ${ruleBlocked.join(', ')}`);
