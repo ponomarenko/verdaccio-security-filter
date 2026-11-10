@@ -1017,4 +1017,29 @@ describe('SecurityFilterPlugin', () => {
             consoleError.mockRestore();
         });
     });
+
+    describe('metrics for filtered versions', () => {
+        it('should record one event per filter for a metadata request, not one per version', async () => {
+            const plugin = new SecurityFilterPlugin({
+                mode: 'blacklist',
+                metrics: { enabled: true, output: 'stdout' },
+                versionRangeRules: [{ package: 'my-lib', range: '<2.0.0', strategy: 'block' }],
+                licenses: { allowed: ['MIT'], blocked: [], requireLicense: true },
+            } as any, pluginOptions);
+            const events = jest.spyOn((plugin as any).metrics.metricsBuffer, 'push');
+            const versions = Object.fromEntries(['1.0.0', '1.1.0', '2.0.0', '2.1.0', '3.0.0'].map(v =>
+                [v, { name: 'my-lib', version: v, license: v.startsWith('2.') ? 'GPL-3.0' : 'MIT' }]));
+            const pkg = (): any => ({ name: 'my-lib', versions: { ...versions }, 'dist-tags': { latest: '3.0.0' } });
+
+            const result: any = await plugin.filter_metadata(pkg());
+            await plugin.filter_metadata(pkg()); // the next request repeats nothing
+            plugin.destroy();
+
+            expect(Object.keys(result.versions)).toEqual(['3.0.0']);
+            expect(events.mock.calls.map(call => call[0])).toEqual([
+                expect.objectContaining({ event: 'block', reason: 'Version blocked by rules', metadata: { versions: ['1.0.0', '1.1.0'] } }),
+                expect.objectContaining({ event: 'block', reason: 'License not allowed', metadata: { versions: ['2.0.0', '2.1.0'] } }),
+            ]);
+        });
+    });
 });

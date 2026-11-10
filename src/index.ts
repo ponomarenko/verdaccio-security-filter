@@ -510,6 +510,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
                 if (ruleBlocked.length > 0) {
                     this.logger.warn(`[filter_metadata] RULE FILTERED: ${packageName}: ${ruleBlocked.join(', ')}`);
+                    this.metrics.recordFiltered(packageName, ruleBlocked, 'Version blocked by rules');
                     pkg = this._removeVersions(pkg, ruleBlocked);
                 }
             }
@@ -551,9 +552,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     }
 
                     this.logger.warn(`[filter_metadata] CVE FILTERED: ${packageName} - ${reason}: ${vulnerableVersions.join(', ')}`);
-                    for (const version of vulnerableVersions) {
-                        this.metrics.recordBlock(packageName, version, reason);
-                    }
+                    this.metrics.recordFiltered(packageName, vulnerableVersions, reason);
                     pkg = this._removeVersions(pkg, vulnerableVersions);
                 }
             }
@@ -572,9 +571,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
                 if (rejected.versions.length > 0) {
                     this.logger.warn(`[filter_metadata] LICENSE FILTERED: ${packageName}: ${rejected.versions.join(', ')}`);
-                    for (const [version, result] of rejected.results) {
-                        this.metrics.recordBlock(packageName, version, result.reason || 'License not allowed');
-                    }
+                    this.metrics.recordFiltered(packageName, rejected.versions, 'License not allowed');
                     pkg = this._removeVersions(pkg, rejected.versions);
                 }
             }
@@ -600,15 +597,17 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                     for (const version of Object.keys(pkg.versions || {})) {
                         const versionAgeResult = this.packageAgeChecker.checkVersionAge(pkg, version);
                         if (!versionAgeResult.allowed && !versionAgeResult.warnOnly) {
-                            this.logger.warn(`[filter_metadata] VERSION AGE FILTERED: ${packageName}@${version} - ${versionAgeResult.reason}`);
-                            this.metrics.recordBlock(packageName, version, versionAgeResult.reason || 'Version too new');
                             removedVersions.push(version);
                         } else if (!versionAgeResult.allowed && versionAgeResult.warnOnly) {
                             this.logger.warn(`[filter_metadata] VERSION AGE WARNING: ${packageName}@${version} - ${versionAgeResult.reason} (warn-only mode)`);
                         }
                     }
 
-                    pkg = this._removeVersions(pkg, removedVersions);
+                    if (removedVersions.length > 0) {
+                        this.logger.warn(`[filter_metadata] VERSION AGE FILTERED: ${packageName}: ${removedVersions.join(', ')}`);
+                        this.metrics.recordFiltered(packageName, removedVersions, 'Version too new');
+                        pkg = this._removeVersions(pkg, removedVersions);
+                    }
                 }
             }
 
@@ -619,34 +618,25 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
                 if (rejected.versions.length > 0 && this.config.authorFilter.warnOnly) {
                     this.logger.warn(`[filter_metadata] AUTHOR WARNING: ${packageName}: ${rejected.versions.join(', ')} - ${rejected.first.reason} (warn-only mode)`);
                 } else if (rejected.versions.length > 0) {
-                    for (const [version, result] of rejected.results) {
+                    const reason = rejected.first.reason || 'Author not allowed';
+                    const details = { blockedBy: rejected.first.blockedBy, authorInfo: rejected.first.authorInfo };
+
+                    if (rejected.all) {
+                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${reason}`);
                         this.metrics.record({
                             timestamp: new Date().toISOString(),
                             event: 'author_blocked',
                             packageName,
-                            version: rejected.all ? '*' : version,
-                            reason: result.reason || 'Author not allowed',
-                            metadata: {
-                                blockedBy: result.blockedBy,
-                                authorInfo: result.authorInfo,
-                            },
+                            version: '*',
+                            reason,
+                            metadata: details,
                         });
-                        if (rejected.all) {
-                            break; // one event for the whole package
-                        }
-                    }
 
-                    if (rejected.all) {
-                        const reason = rejected.first.reason || 'Author not allowed';
-                        this.logger.warn(`[filter_metadata] AUTHOR BLOCKED: ${packageName} - ${reason}`);
-
-                        return this._blockedPackage(pkg, reason, {
-                            blockedBy: rejected.first.blockedBy,
-                            authorInfo: rejected.first.authorInfo,
-                        });
+                        return this._blockedPackage(pkg, reason, details);
                     }
 
                     this.logger.warn(`[filter_metadata] AUTHOR FILTERED: ${packageName}: ${rejected.versions.join(', ')}`);
+                    this.metrics.recordFiltered(packageName, rejected.versions, reason, 'author_blocked', details);
                     pkg = this._removeVersions(pkg, rejected.versions);
                 }
             }

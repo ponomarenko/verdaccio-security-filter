@@ -76,42 +76,6 @@ export class SecurityLogger {
     }
 
     /**
-     * Log package blocking event
-     */
-    logBlock(packageName: string, version: string, reason: string): void {
-        this.warn(`Blocked ${packageName}@${version} - ${reason}`);
-    }
-
-    /**
-     * Log fallback event
-     */
-    logFallback(packageName: string, fromVersion: string, toVersion: string, reason?: string): void {
-        const reasonText = reason ? ` (${reason})` : '';
-        this.info(`Fallback applied: ${packageName}@${fromVersion} -> ${toVersion}${reasonText}`);
-    }
-
-    /**
-     * Log CVE detection
-     */
-    logCVE(packageName: string, version: string, cveId: string, severity: string): void {
-        this.warn(`CVE detected: ${cveId} [${severity}] in ${packageName}@${version}`);
-    }
-
-    /**
-     * Log license violation
-     */
-    logLicense(packageName: string, version: string, license: string, reason: string): void {
-        this.warn(`License violation: ${packageName}@${version} has ${license} - ${reason}`);
-    }
-
-    /**
-     * Log publish rejection
-     */
-    logPublishRejected(packageName: string, version: string, reason: string): void {
-        this.warn(`Publish rejected: ${packageName}@${version} - ${reason}`);
-    }
-
-    /**
      * Log initialization
      */
     logInit(features: string[]): void {

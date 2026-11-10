@@ -110,46 +110,6 @@ describe('SecurityLogger', () => {
             securityLogger = new SecurityLogger(mockLogger, { level: 'info', enabled: true });
         });
 
-        it('should log block events', () => {
-            securityLogger.logBlock('lodash', '4.17.20', 'CVE detected');
-
-            expect(mockLogger.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Blocked lodash@4.17.20 - CVE detected')
-            );
-        });
-
-        it('should log fallback events', () => {
-            securityLogger.logFallback('lodash', '4.17.20', '4.17.21', 'Security patch');
-
-            expect(mockLogger.info).toHaveBeenCalledWith(
-                expect.stringContaining('Fallback applied: lodash@4.17.20 -> 4.17.21')
-            );
-        });
-
-        it('should log CVE detection', () => {
-            securityLogger.logCVE('lodash', '4.17.20', 'CVE-2021-23337', 'high');
-
-            expect(mockLogger.warn).toHaveBeenCalledWith(
-                expect.stringContaining('CVE detected: CVE-2021-23337 [high] in lodash@4.17.20')
-            );
-        });
-
-        it('should log license violations', () => {
-            securityLogger.logLicense('some-package', '1.0.0', 'GPL-3.0', 'License not allowed');
-
-            expect(mockLogger.warn).toHaveBeenCalledWith(
-                expect.stringContaining('License violation')
-            );
-        });
-
-        it('should log publish rejections', () => {
-            securityLogger.logPublishRejected('test-package', '1.0.0', 'Too large');
-
-            expect(mockLogger.warn).toHaveBeenCalledWith(
-                expect.stringContaining('Publish rejected: test-package@1.0.0 - Too large')
-            );
-        });
-
         it('should log initialization', () => {
             securityLogger.logInit(['cve-checking', 'license-filtering']);
 
