@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MetricsConfig, MetricsData } from '../types';
+import { CheckerLog } from './logger';
 
 /**
  * Metrics collector for tracking security events
@@ -13,7 +14,7 @@ export class MetricsCollector {
     private readonly flushIntervalMs = 10_000;
     private flushTimer: NodeJS.Timeout | null = null;
 
-    constructor(config?: MetricsConfig, private readonly dryRun = false) {
+    constructor(config?: MetricsConfig, private readonly dryRun = false, private readonly log: CheckerLog = console) {
         this.config = {
             enabled: config?.enabled || false,
             output: config?.output || 'stdout',
@@ -111,6 +112,7 @@ export class MetricsCollector {
 
         if (this.config.output === 'stdout') {
             this.metricsBuffer.forEach(metric => {
+                // Intentionally the raw console: with output 'stdout' the JSON lines are the product.
                 console.log(JSON.stringify(metric));
             });
         } else if (this.config.output === 'file' && this.config.filePath) {
@@ -138,7 +140,7 @@ export class MetricsCollector {
             fs.appendFileSync(filePath, content, 'utf8');
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error('[Security Filter] Failed to write metrics:', message);
+            this.log.error(`Failed to write metrics: ${message}`);
         }
     }
 

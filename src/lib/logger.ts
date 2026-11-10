@@ -2,6 +2,12 @@ import { Logger } from '@verdaccio/types';
 import { LoggerConfig } from '../types';
 
 /**
+ * What the checkers need for logging. The plugin passes its SecurityLogger; used on their
+ * own (tests, scripts) the checkers fall back to the console, which has the same shape.
+ */
+export type CheckerLog = Pick<SecurityLogger, 'debug' | 'warn' | 'error'>;
+
+/**
  * Enhanced logger wrapper with configurable log levels and formatting
  */
 export class SecurityLogger {

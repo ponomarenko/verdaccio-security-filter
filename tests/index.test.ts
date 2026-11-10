@@ -1000,4 +1000,21 @@ describe('SecurityFilterPlugin', () => {
             expect(Object.keys(body.versions)).toEqual(['1.0.0']);
         });
     });
+
+    describe('checker logging', () => {
+        it('should send checker messages to the plugin logger, not the console', async () => {
+            const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+            pluginOptions.logger.error.mockClear();
+
+            const plugin = new SecurityFilterPlugin({
+                mode: 'whitelist',
+                whitelist: { packages: [], patterns: ['(['] },
+            } as any, pluginOptions);
+            await plugin.filter_metadata({ name: 'any-pkg', versions: {}, 'dist-tags': {} } as any);
+
+            expect(consoleError).not.toHaveBeenCalled();
+            expect(pluginOptions.logger.error).toHaveBeenCalledWith(expect.stringContaining('[Security Filter] [Whitelist] Invalid pattern: (['));
+            consoleError.mockRestore();
+        });
+    });
 });

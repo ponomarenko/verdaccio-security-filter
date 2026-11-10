@@ -76,13 +76,13 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         this.logger = new SecurityLogger(options.logger, this.config.logger, !!this.config.dryRun);
 
         // Initialize metrics collector
-        this.metrics = new MetricsCollector(this.config.metrics, !!this.config.dryRun);
+        this.metrics = new MetricsCollector(this.config.metrics, !!this.config.dryRun, this.logger);
 
         // Initialize whitelist checker
-        this.whitelistChecker = new WhitelistChecker(this.config.whitelist);
+        this.whitelistChecker = new WhitelistChecker(this.config.whitelist, this.logger);
 
         // Initialize security checkers
-        this.cveChecker = new CVEChecker(this.config.cveCheck);
+        this.cveChecker = new CVEChecker(this.config.cveCheck, this.logger);
         this.licenseChecker = new LicenseChecker(this.config.licenses);
         this.packageAgeChecker = new PackageAgeChecker(this.config.packageAge);
         this.authorChecker = new AuthorChecker(this.config.authorFilter);
