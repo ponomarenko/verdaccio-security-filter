@@ -97,31 +97,26 @@ This plugin implements **two independent security layers** for complete protecti
   - API timeout protection
   - Graceful degradation on errors
 
-### 🔮 Planned Features (Roadmap)
+### 🔮 Roadmap
 
-#### Phase 3: Advanced Security
-- [ ] **Dependency Depth Limiting** - Limit dependency tree depth and total count
-- [ ] **Circular Dependency Detection** - Block packages with circular dependencies
-- [ ] **Rate Limiting** - Detect and block suspicious download patterns
-- [ ] **Typosquatting Detection** - AI-powered detection of similar package names
-- [ ] **Package Signing Verification** - PGP signature validation
-- [ ] **Custom Validation Scripts** - Execute custom security checks
+#### Planned
+- [ ] **Webhook notifications** - POST each block event to a URL; covers Slack and email through the usual webhook bridges
+- [ ] **Package signature verification** - check npm registry signatures and provenance attestations
+- [ ] **Typosquatting detection** - flag names within a small edit distance of popular packages
 
-#### Phase 4: Enterprise Features
-- [ ] **Integration with Security Scanners** - npm audit, Snyk API, Sonatype
-- [ ] **Webhook Notifications** - Real-time alerts for security events
-- [ ] **Web Dashboard** - Visual interface for security analytics
-- [ ] **Email/Slack Notifications** - Alert channels for critical events
-- [ ] **Audit Reports** - Generate compliance reports (PDF, CSV, JSON)
-- [ ] **Multi-Registry Support** - Fallback to other registries
-- [ ] **ML-based Anomaly Detection** - Machine learning for threat detection
+#### Under consideration
+These wait for a concrete request:
+- **Snyk integration** - OSV already includes GitHub Security Advisories, so a second source only helps if it knows more
+- **Auto-approve criteria** - approve by npm statistics; needs external requests on the request path
+- **CLI tool** and **GitHub Action** for checking a rule set outside Verdaccio
 
-#### Phase 5: Developer Experience
-- [x] **Dry Run Mode** - Test rules without actually blocking (`dryRun: true`)
-- [ ] **Auto-approve Criteria** - Automatic approval based on npm stats (downloads, stars)
-- [ ] **CLI Tool** - Command-line interface for rule management
-- [ ] **Visual Studio Code Extension** - IDE integration
-- [ ] **GitHub Action** - CI/CD integration
+#### Done
+- [x] **Dry-run mode** - `dryRun: true`
+
+#### Not planned
+- **Rate limiting** and **multi-registry fallback** - Verdaccio already provides both (`rateLimit`, uplinks)
+- **Dependency depth limits** and **circular dependency detection** - they need the whole dependency tree resolved inside the proxy on every request
+- **Web dashboard**, **ML-based anomaly detection**, **VS Code extension**, **PDF audit reports**, **custom validation scripts** - outside the scope of a filter plugin; the JSON metrics output is the integration point
 
 ## 📦 Installation
 
