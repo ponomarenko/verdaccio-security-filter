@@ -11,8 +11,17 @@ export class LicenseChecker {
         this.config = {
             allowed: config?.allowed || [],
             blocked: config?.blocked || [],
-            requireLicense: config?.requireLicense !== false,
+            // An allow-list implies "must have a license" unless told otherwise. A block-list alone
+            // does not: turning it on must not also hide every version without a license field.
+            requireLicense: config?.requireLicense ?? (config?.allowed || []).length > 0,
         };
+    }
+
+    /**
+     * Whether there is anything to check: a list, or an explicit requireLicense.
+     */
+    get enabled(): boolean {
+        return this.config.allowed.length > 0 || this.config.blocked.length > 0 || this.config.requireLicense;
     }
 
     /**

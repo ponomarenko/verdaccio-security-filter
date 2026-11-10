@@ -186,7 +186,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         if (this.config.mode === 'whitelist') features.push('whitelist-mode');
         if (this.config.metrics?.enabled) features.push('metrics');
         if (this.config.cveCheck?.enabled) features.push('cve-checking');
-        if (this.config.licenses?.allowed && this.config.licenses.allowed.length > 0) features.push('license-filtering');
+        if (this.licenseChecker.enabled) features.push('license-filtering');
         if (this.config.packageAge?.enabled) features.push('package-age-verification');
         if (this.config.authorFilter?.enabled) features.push('author-filtering');
         if (this.securityRules.versionRangeRules.length > 0) features.push('version-range-rules');
@@ -559,7 +559,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             }
 
             // 3. License Check - every version; only the offending ones are removed
-            if (this.config.licenses && this.config.licenses.allowed && this.config.licenses.allowed.length > 0) {
+            if (this.licenseChecker.enabled) {
                 const rejected = this._rejectedVersions(pkg, data => this.licenseChecker.checkLicense(data));
 
                 if (rejected.all) {

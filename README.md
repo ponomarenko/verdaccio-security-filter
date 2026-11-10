@@ -448,9 +448,9 @@ Recommended before turning on `cveCheck.autoBlock`, a license policy or the auth
 |--------|------|---------|-------------|
 | `licenses.allowed` | `string[]` | `[]` | Allowed license list |
 | `licenses.blocked` | `string[]` | `[]` | Blocked license list |
-| `licenses.requireLicense` | `boolean` | `true` | Reject versions without a license field |
+| `licenses.requireLicense` | `boolean` | `true` with `allowed`, otherwise `false` | Reject versions without a license field |
 
-The license check runs when `licenses.allowed` is not empty. Every version is checked: versions with a rejected license are removed from the metadata, and the package is blocked as a whole only when no version is left.
+The license check runs when `licenses.allowed` or `licenses.blocked` is not empty, or `licenses.requireLicense` is `true`. Every version is checked: versions with a rejected license are removed from the metadata, and the package is blocked as a whole only when no version is left.
 
 ### Whitelist Options
 
