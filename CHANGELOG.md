@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.4](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.3...v1.4.4) (2026-11-10)
+
+
+### Bug Fixes
+
+* **cve:** treat malicious-package reports as critical and unscored v4 records as high ([#79](https://github.com/ponomarenko/verdaccio-security-filter/issues/79)) ([3e2e62c](https://github.com/ponomarenko/verdaccio-security-filter/commit/3e2e62c35af538985bdfbe8a95c4ec0c4494c4ad)), closes [#59](https://github.com/ponomarenko/verdaccio-security-filter/issues/59)
+
 ## [1.4.3](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.2...v1.4.3) (2026-11-10)
 
 
