@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.3](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.2...v1.4.3) (2026-11-10)
+
+
+### Bug Fixes
+
+* route checker logs through the plugin logger and stop repeating metrics events ([#77](https://github.com/ponomarenko/verdaccio-security-filter/issues/77)) ([a87b5a3](https://github.com/ponomarenko/verdaccio-security-filter/commit/a87b5a3000de04507e813166bc9146fb66591630))
+
 ## [1.4.2](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.1...v1.4.2) (2026-11-10)
 
 
