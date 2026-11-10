@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.1...v1.4.2) (2026-11-10)
+
+
+### Bug Fixes
+
+* **license:** apply licenses.blocked and requireLicense without an allow-list ([#74](https://github.com/ponomarenko/verdaccio-security-filter/issues/74)) ([5740e75](https://github.com/ponomarenko/verdaccio-security-filter/commit/5740e758a6aea816027d7e4b9a2146fef12d99d3)), closes [#68](https://github.com/ponomarenko/verdaccio-security-filter/issues/68)
+
 ## [1.4.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.0...v1.4.1) (2026-11-09)
 
 
