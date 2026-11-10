@@ -117,8 +117,9 @@ export interface CVECheckResult {
 
 export interface MetricsData {
     timestamp: string;
-    event: 'block' | 'fallback' | 'publish_rejected' | 'cve_detected' | 'license_blocked' | 'package_too_new' | 'author_blocked';
+    event: 'block' | 'author_blocked';
     packageName: string;
+    /** A blocked version, or '*' for the whole package. Absent when metadata.versions lists removed versions. */
     version?: string;
     reason: string;
     metadata?: Record<string, any>;

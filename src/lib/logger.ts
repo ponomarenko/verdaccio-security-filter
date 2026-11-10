@@ -2,6 +2,12 @@ import { Logger } from '@verdaccio/types';
 import { LoggerConfig } from '../types';
 
 /**
+ * What the checkers need for logging. The plugin passes its SecurityLogger; used on their
+ * own (tests, scripts) the checkers fall back to the console, which has the same shape.
+ */
+export type CheckerLog = Pick<SecurityLogger, 'debug' | 'warn' | 'error'>;
+
+/**
  * Enhanced logger wrapper with configurable log levels and formatting
  */
 export class SecurityLogger {
@@ -67,42 +73,6 @@ export class SecurityLogger {
         if (this.shouldLog('error')) {
             this.verdaccioLogger.error(this.formatMessage(message), ...args);
         }
-    }
-
-    /**
-     * Log package blocking event
-     */
-    logBlock(packageName: string, version: string, reason: string): void {
-        this.warn(`Blocked ${packageName}@${version} - ${reason}`);
-    }
-
-    /**
-     * Log fallback event
-     */
-    logFallback(packageName: string, fromVersion: string, toVersion: string, reason?: string): void {
-        const reasonText = reason ? ` (${reason})` : '';
-        this.info(`Fallback applied: ${packageName}@${fromVersion} -> ${toVersion}${reasonText}`);
-    }
-
-    /**
-     * Log CVE detection
-     */
-    logCVE(packageName: string, version: string, cveId: string, severity: string): void {
-        this.warn(`CVE detected: ${cveId} [${severity}] in ${packageName}@${version}`);
-    }
-
-    /**
-     * Log license violation
-     */
-    logLicense(packageName: string, version: string, license: string, reason: string): void {
-        this.warn(`License violation: ${packageName}@${version} has ${license} - ${reason}`);
-    }
-
-    /**
-     * Log publish rejection
-     */
-    logPublishRejected(packageName: string, version: string, reason: string): void {
-        this.warn(`Publish rejected: ${packageName}@${version} - ${reason}`);
     }
 
     /**

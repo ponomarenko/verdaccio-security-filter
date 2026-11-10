@@ -589,23 +589,30 @@ npm run build -- --watch
 
 ## 📊 Metrics & Monitoring
 
-When metrics are enabled, the plugin tracks:
+When metrics are enabled, the plugin writes one JSON object per event, flushed every 10 seconds or every 100 events.
 
-- `block` - Packages or versions blocked by rules, CVE, license or age checks; the `reason` field says which
-- `author_blocked` - Packages blocked due to author/region filtering
+- `block` - a package, a tarball or some versions were blocked; `reason` says why
+- `author_blocked` - the same, decided by the author filter
 
-Example metrics output:
+What `version` holds:
+
+| Situation | Fields |
+|---|---|
+| A tarball download was refused | `version`: the requested version |
+| A package was blocked as a whole | `version`: `"*"` |
+| Versions were removed from metadata | no `version`; `metadata.versions` lists them |
+
+Refused requests are recorded every time, because each one is an attempt. Removed versions are recorded once per package and reason, and again only after 10 minutes: metadata is filtered on every request, so the same removal would otherwise be repeated for each of them.
+
+In [dry-run mode](#dry-run-mode) every event carries `"dryRun": true`.
+
 ```json
 {
-  "timestamp": "2025-01-15T10:30:00.000Z",
-  "event": "cve_detected",
+  "timestamp": "2026-01-15T10:30:00.000Z",
+  "event": "block",
   "packageName": "lodash",
-  "version": "4.17.20",
-  "reason": "CVE-2021-23337 (high)",
-  "metadata": {
-    "cveId": "CVE-2021-23337",
-    "severity": "high"
-  }
+  "reason": "Package has 2 vulnerable version(s)",
+  "metadata": { "versions": ["4.17.19", "4.17.20"] }
 }
 ```
 

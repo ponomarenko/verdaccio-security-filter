@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MetricsConfig, MetricsData } from '../types';
+import { CheckerLog } from './logger';
+import { LRUCache } from './lru-cache';
 
 /**
  * Metrics collector for tracking security events
@@ -12,8 +14,11 @@ export class MetricsCollector {
     private readonly maxBufferSize = 500;
     private readonly flushIntervalMs = 10_000;
     private flushTimer: NodeJS.Timeout | null = null;
+    private readonly filteredRepeatMs = 10 * 60 * 1000;
+    private recentlyFiltered = new LRUCache<string, number>(5000);
+    private counts: Record<string, number> = { block: 0, author_blocked: 0 };
 
-    constructor(config?: MetricsConfig, private readonly dryRun = false) {
+    constructor(config?: MetricsConfig, private readonly dryRun = false, private readonly log: CheckerLog = console) {
         this.config = {
             enabled: config?.enabled || false,
             output: config?.output || 'stdout',
@@ -39,6 +44,7 @@ export class MetricsCollector {
             this.flush();
         }
 
+        this.counts[event.event] = (this.counts[event.event] || 0) + 1;
         this.metricsBuffer.push(this.dryRun ? { ...event, dryRun: true } : event);
 
         if (this.metricsBuffer.length >= this.bufferSize) {
@@ -61,43 +67,34 @@ export class MetricsCollector {
     }
 
     /**
-     * Record a publish rejection
+     * Record versions removed from a package's metadata as ONE event (the versions are in
+     * metadata.versions). Metadata is filtered on every request, so the same removal is
+     * recorded at most once per repeat window instead of once per version per request.
      */
-    recordPublishRejected(packageName: string, version: string, reason: string): void {
-        this.record({
-            timestamp: new Date().toISOString(),
-            event: 'publish_rejected',
-            packageName,
-            version,
-            reason,
-        });
-    }
+    recordFiltered(
+        packageName: string,
+        versions: string[],
+        reason: string,
+        event: MetricsData['event'] = 'block',
+        metadata: Record<string, any> = {},
+    ): void {
+        if (!this.config.enabled || versions.length === 0) {
+            return;
+        }
 
-    /**
-     * Record a license block
-     */
-    recordLicenseBlock(packageName: string, version: string, license: string, reason: string): void {
-        this.record({
-            timestamp: new Date().toISOString(),
-            event: 'license_blocked',
-            packageName,
-            version,
-            reason,
-            metadata: { license },
-        });
-    }
+        const key = `${event}|${packageName}|${reason}|${versions.join(',')}`;
+        const now = Date.now();
+        if (now - (this.recentlyFiltered.get(key) ?? -Infinity) < this.filteredRepeatMs) {
+            return;
+        }
+        this.recentlyFiltered.set(key, now);
 
-    /**
-     * Record a package-too-new event
-     */
-    recordPackageTooNew(packageName: string, version: string, reason: string, metadata?: Record<string, any>): void {
         this.record({
             timestamp: new Date().toISOString(),
-            event: 'package_too_new',
+            event,
             packageName,
-            version,
             reason,
-            metadata,
+            metadata: { ...metadata, versions },
         });
     }
 
@@ -111,6 +108,7 @@ export class MetricsCollector {
 
         if (this.config.output === 'stdout') {
             this.metricsBuffer.forEach(metric => {
+                // Intentionally the raw console: with output 'stdout' the JSON lines are the product.
                 console.log(JSON.stringify(metric));
             });
         } else if (this.config.output === 'file' && this.config.filePath) {
@@ -138,29 +136,15 @@ export class MetricsCollector {
             fs.appendFileSync(filePath, content, 'utf8');
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error('[Security Filter] Failed to write metrics:', message);
+            this.log.error(`Failed to write metrics: ${message}`);
         }
     }
 
     /**
-     * Get metrics summary
+     * Number of events recorded since start-up, by event type.
      */
     getSummary(): Record<string, number> {
-        const summary: Record<string, number> = {
-            block: 0,
-            fallback: 0,
-            publish_rejected: 0,
-            cve_detected: 0,
-            license_blocked: 0,
-            package_too_new: 0,
-            author_blocked: 0,
-        };
-
-        this.metricsBuffer.forEach(metric => {
-            summary[metric.event] = (summary[metric.event] || 0) + 1;
-        });
-
-        return summary;
+        return { ...this.counts };
     }
 
     /**

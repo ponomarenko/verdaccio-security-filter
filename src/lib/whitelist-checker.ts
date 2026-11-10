@@ -1,5 +1,6 @@
 import * as semver from 'semver';
 import { WhitelistConfig } from '../types';
+import { CheckerLog } from './logger';
 
 /**
  * Whitelist checker for package validation
@@ -8,7 +9,7 @@ export class WhitelistChecker {
     private config: WhitelistConfig;
     private regexes = new Map<string, RegExp | null>();
 
-    constructor(config?: WhitelistConfig) {
+    constructor(config?: WhitelistConfig, private readonly log: CheckerLog = console) {
         this.config = {
             packages: config?.packages || [],
             patterns: config?.patterns || [],
@@ -63,7 +64,7 @@ export class WhitelistChecker {
             try {
                 regex = new RegExp(pattern);
             } catch {
-                console.error(`[Whitelist] Invalid pattern: ${pattern}`);
+                this.log.error(`[Whitelist] Invalid pattern: ${pattern}`);
                 regex = null;
             }
             this.regexes.set(pattern, regex);
