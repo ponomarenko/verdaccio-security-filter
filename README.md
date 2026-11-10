@@ -433,7 +433,7 @@ Recommended before turning on `cveCheck.autoBlock`, a license policy or the auth
 |--------|------|---------|-------------|
 | `cveCheck.enabled` | `boolean` | `false` | Enable CVE scanning |
 | `cveCheck.databases` | `string[]` | `['osv']` | Vulnerability databases. Only `osv` is implemented; it already includes GitHub Security Advisories |
-| `cveCheck.severity` | `string[]` | `['high', 'critical']` | Severity levels to check |
+| `cveCheck.severity` | `string[]` | `['high', 'critical']` | Severity levels to act on. See [how severity is determined](#how-severity-is-determined) |
 | `cveCheck.autoBlock` | `boolean` | `false` | Remove vulnerable versions from metadata (whole package blocked if every version is vulnerable) |
 | `cveCheck.updateInterval` | `number` | `24` | How long a package's vulnerability data is cached (hours) |
 | `cveCheck.cacheDir` | `string` | `./.security-cache` | Cache directory path |
@@ -441,6 +441,18 @@ Recommended before turning on `cveCheck.autoBlock`, a license policy or the auth
 > **Note on removed versions and dist-tags:** whenever a check removes versions (CVE `autoBlock`, license, author, age, version rules, `whitelist.versions`), the other versions stay installable. The plugin drops every dist-tag that points to a removed version. Verdaccio then points `latest` at the highest version that is left (verified with Verdaccio 6.2), so `npm install <pkg>` keeps working. Other dist-tags that pointed to a removed version are gone.
 
 > **When OSV is unreachable:** a lookup gets one retry with a 5 second timeout each. After a failure the same package is not looked up again for 60 seconds. Previously cached data, even if older than `updateInterval`, keeps being used. With no cached data, `errorHandling.onCveCheckError` decides: `fail-open` serves the package unchecked, `fail-closed` blocks it.
+
+### How severity is determined
+
+For each OSV record, in this order:
+
+1. Malicious-package reports (ids starting with `MAL-`) are `critical`. They carry no severity information in OSV.
+2. The rating of the source database (GitHub Security Advisories: `LOW`, `MODERATE`, `HIGH`, `CRITICAL`).
+3. The CVSS v3.0 / v3.1 base score computed from the vector.
+4. A record with only a CVSS v4 vector is treated as `high`: v4 vectors are not scored.
+5. A record with no severity information at all is `medium`.
+
+Cached results keep the severity they were stored with until they are refreshed (`cveCheck.updateInterval`).
 
 ### License Options
 
