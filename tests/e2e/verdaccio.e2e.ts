@@ -253,6 +253,14 @@ describe('plugin inside a running Verdaccio', () => {
         });
     });
 
+    describe('blocked-only license list', () => {
+        it('removes the versions with a blocked license', async () => {
+            registry = await startRegistry({ mode: 'blacklist', licenses: { blocked: ['GPL-3.0'] } });
+
+            expect(versionsOf(await registry.get('/demo-pkg'))).toEqual(['1.5.0', '2.0.0']);
+        });
+    });
+
     describe('dry-run mode', () => {
         it('serves everything the rules would block', async () => {
             registry = await startRegistry({

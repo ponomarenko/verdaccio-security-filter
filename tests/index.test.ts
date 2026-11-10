@@ -802,6 +802,41 @@ describe('SecurityFilterPlugin', () => {
             expect(Object.keys(result.versions)).toEqual(['2.0.0']);
         });
 
+        it('should apply a blocked-only license list without requiring a license', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses: { blocked: ['GPL-3.0'] } } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({
+                '1.0.0': { license: 'GPL-3.0' }, '2.0.0': { license: 'MIT' }, '3.0.0': {},
+            }, '3.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['2.0.0', '3.0.0']);
+        });
+
+        it('should apply requireLicense on its own', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses: { requireLicense: true } } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({
+                '1.0.0': { license: 'GPL-3.0' }, '2.0.0': {},
+            }, '2.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['1.0.0']);
+        });
+
+        it('should still require a license by default when an allow-list is set', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses: { allowed: ['MIT'] } } as any, pluginOptions);
+
+            const result: any = await plugin.filter_metadata(metadata({ '1.0.0': { license: 'MIT' }, '2.0.0': {} }, '2.0.0'));
+
+            expect(Object.keys(result.versions)).toEqual(['1.0.0']);
+        });
+
+        it('should not run the license check for an empty licenses block', async () => {
+            const plugin = new SecurityFilterPlugin({ mode: 'blacklist', licenses: {} } as any, pluginOptions);
+            const pkg = metadata({ '1.0.0': {}, '2.0.0': { license: 'GPL-3.0' } }, '2.0.0');
+
+            expect(await plugin.filter_metadata(pkg)).toBe(pkg);
+        });
+
         it('should remove only the versions published by a blocked author', async () => {
             const plugin = new SecurityFilterPlugin({ mode: 'blacklist', authorFilter } as any, pluginOptions);
 
