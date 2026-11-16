@@ -1,19 +1,28 @@
 {
   "name": "verdaccio-security-filter",
   "version": "1.5.0",
-  "description": "Advanced security filter plugin for Verdaccio with version range blocking and fallback strategies",
+  "description": "Verdaccio security plugin: block vulnerable (CVE/OSV), malicious and newly published npm packages in your private registry to stop supply chain attacks",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "keywords": [
     "verdaccio",
+    "verdaccio-plugin",
     "plugin",
-    "filter",
     "security",
     "npm",
+    "npm-security",
     "registry",
+    "private-registry",
+    "npm-proxy",
+    "supply-chain",
+    "supply-chain-security",
     "vulnerability",
+    "cve",
+    "osv",
+    "malware",
+    "license-compliance",
     "semver",
-    "version-control"
+    "filter"
   ],
   "publishConfig": {
     "access": "public"
