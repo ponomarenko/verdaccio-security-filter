@@ -1,7 +1,7 @@
 /**
  * End-to-end tests: a real Verdaccio, started in-process, loads the BUILT plugin
  * (run `npm run build` first; `npm run test:e2e` does it) and proxies a mock uplink.
- * OSV is stubbed through global fetch, so no test touches the network.
+ * OSV is stubbed through global fetch, so no test touches the network; the webhook receiver is local.
  */
 import * as fs from 'fs';
 import * as http from 'http';
@@ -279,6 +279,57 @@ describe('plugin inside a running Verdaccio', () => {
             expect(evil.body.security).toBeUndefined();
             expect((await registry.get('/evil-pkg/-/evil-pkg-1.0.0.tgz')).status).toBe(200);
         });
+    });
+
+    describe('webhook notifications', () => {
+        it('posts blocks decided by the middleware and by filter_metadata to the configured endpoint', async () => {
+            const events: any[] = [];
+            let onEvent = () => undefined as void;
+            const receiver = http.createServer((req, res) => {
+                let data = '';
+                req.on('data', chunk => (data += chunk));
+                req.on('end', () => {
+                    expect(req.headers['x-token']).toBe('e2e');
+                    events.push(...JSON.parse(data).events);
+                    res.end();
+                    onEvent();
+                });
+            });
+            const receiverPort = await listen(receiver);
+
+            try {
+                registry = await startRegistry({
+                    mode: 'blacklist',
+                    blockedPatterns: ['^evil-'],
+                    licenses: { blocked: ['GPL-3.0'] },
+                    webhook: { enabled: true, url: `http://127.0.0.1:${receiverPort}/hook`, headers: { 'X-Token': 'e2e' } },
+                });
+
+                expect((await registry.get('/evil-pkg')).status).toBe(403);
+                expect((await registry.get('/evil-pkg')).status).toBe(403);
+                expect(versionsOf(await registry.get('/demo-pkg'))).toEqual(['1.5.0', '2.0.0']);
+
+                // The two layers are separate plugin instances, each sends its own batch after a few seconds.
+                await new Promise<void>((resolve, reject) => {
+                    const timeout = setTimeout(() => reject(new Error(`got ${events.length} of 2 events`)), 15000);
+                    onEvent = () => {
+                        if (events.length >= 2) {
+                            clearTimeout(timeout);
+                            resolve();
+                        }
+                    };
+                    onEvent();
+                });
+
+                expect(events).toHaveLength(2);
+                expect(events).toEqual(expect.arrayContaining([
+                    expect.objectContaining({ event: 'block', packageName: 'evil-pkg', version: '*', reason: 'Package name matches blocked pattern' }),
+                    expect.objectContaining({ event: 'block', packageName: 'demo-pkg', reason: 'License not allowed', metadata: { versions: ['1.0.0'] } }),
+                ]));
+            } finally {
+                await close(receiver);
+            }
+        }, 30000);
     });
 
     describe('CVE check', () => {
