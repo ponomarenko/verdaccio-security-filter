@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.4...v1.5.0) (2026-11-16)
+
+
+### Features
+
+* add webhook notifications for block events ([#82](https://github.com/ponomarenko/verdaccio-security-filter/issues/82)) ([a609664](https://github.com/ponomarenko/verdaccio-security-filter/commit/a609664b53c512a7988c5fabcac0ef9837d0a5be))
+
 ## [1.4.4](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.3...v1.4.4) (2026-11-10)
 
 
