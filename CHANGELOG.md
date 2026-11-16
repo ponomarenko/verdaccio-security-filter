@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.1](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.5.0...v1.5.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* improve npm package description and keywords for discoverability ([#84](https://github.com/ponomarenko/verdaccio-security-filter/issues/84)) ([7f844fe](https://github.com/ponomarenko/verdaccio-security-filter/commit/7f844fea59778df35820ff89730073ce50cf9dd6))
+
 ## [1.5.0](https://github.com/ponomarenko/verdaccio-security-filter/compare/v1.4.4...v1.5.0) (2026-11-16)
 
 
