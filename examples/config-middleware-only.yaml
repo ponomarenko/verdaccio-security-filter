@@ -54,7 +54,8 @@ middlewares:
     # Metrics collection
     metrics:
       enabled: true
-      path: ./security-metrics.jsonl
+      output: file
+      filePath: ./security-metrics.jsonl
 
 # Web UI settings
 web:

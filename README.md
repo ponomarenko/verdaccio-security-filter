@@ -61,6 +61,7 @@ This plugin implements **two independent security layers** for complete protecti
 #### 📊 Monitoring & Observability
 - **Enhanced Logging** - Configurable log levels (`debug`, `info`, `warn`, `error`)
 - **Metrics Collection** - Track security events (blocks with their reason, author blocks)
+- **Webhook Notifications** - POST block events to any HTTP endpoint or a Slack-compatible incoming webhook
 - **Security Audit Trail** - Detailed logging of all security decisions
 - **Customizable Output** - Log to stdout or file in JSON format
 
@@ -100,7 +101,6 @@ This plugin implements **two independent security layers** for complete protecti
 ### 🔮 Roadmap
 
 #### Planned
-- [ ] **Webhook notifications** - POST each block event to a URL; covers Slack and email through the usual webhook bridges
 - [ ] **Package signature verification** - check npm registry signatures and provenance attestations
 - [ ] **Typosquatting detection** - flag names within a small edit distance of popular packages
 
@@ -112,6 +112,7 @@ These wait for a concrete request:
 
 #### Done
 - [x] **Dry-run mode** - `dryRun: true`
+- [x] **Webhook notifications** - `webhook`: block events as JSON or as a Slack message
 
 #### Not planned
 - **Rate limiting** and **multi-registry fallback** - Verdaccio already provides both (`rateLimit`, uplinks)
@@ -417,7 +418,7 @@ While it is on:
 - every check runs as usual, including CVE lookups
 - nothing is blocked: metadata is served unchanged and every tarball can be downloaded
 - each decision is logged at `warn` with a `[DRY RUN]` marker, followed by a summary such as `lodash: would remove 115 of 117 version(s)`
-- metrics events carry `"dryRun": true`
+- metrics events and [webhook notifications](#webhook-options) carry `"dryRun": true`
 - one warning at start-up says that dry-run is active
 
 Recommended before turning on `cveCheck.autoBlock`, a license policy or the author filter on a registry that is already in use.
@@ -482,6 +483,71 @@ The license check runs when `licenses.allowed` or `licenses.blocked` is not empt
 | `metrics.enabled` | `boolean` | `false` | Enable metrics collection |
 | `metrics.output` | `string` | `stdout` | Output: `stdout` or `file` |
 | `metrics.filePath` | `string` | `./security-metrics.json` | Metrics file path |
+
+### Webhook Options
+
+Sends every block event to an HTTP endpoint. It does not depend on `metrics.enabled`.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `webhook.enabled` | `boolean` | `false` | Enable webhook notifications |
+| `webhook.url` | `string` | - | Endpoint that receives a `POST` with a JSON body |
+| `webhook.format` | `string` | `json` | `json`: the events as they are. `slack`: a `{ "text": ... }` message for Slack incoming webhooks and services that accept the same body (Mattermost, Rocket.Chat, Discord's `/slack` endpoint) |
+| `webhook.headers` | `object` | `{}` | Extra request headers, for example `Authorization` |
+| `webhook.timeoutMs` | `number` | `5000` | Timeout of one delivery attempt |
+| `webhook.repeatIntervalMinutes` | `number` | `60` | The same event is sent at most once per interval; `0` sends every occurrence |
+
+```yaml
+webhook:
+  enabled: true
+  url: ${SECURITY_WEBHOOK_URL}
+  format: slack
+```
+
+```yaml
+webhook:
+  enabled: true
+  url: https://alerts.example.com/hooks/verdaccio
+  headers:
+    Authorization: Bearer ${SECURITY_WEBHOOK_TOKEN}
+```
+
+**Secrets.** `${NAME}` in `url` and in header values is replaced with the environment variable `NAME`, so a token does not have to be written into `config.yaml`. If a referenced variable is not set, the webhook stays off and the log says which one. Log messages name only the host of the endpoint, never the full URL.
+
+**Delivery.** Events are collected for 5 seconds and sent as one request, so a burst of blocks becomes one message. Sending happens in the background and never delays a response to npm. A failed request is retried twice (after 1 and 4 seconds) on network errors, `429` and `5xx`; after that the batch is dropped with a warning in the log. At most 1000 events wait for an endpoint that does not answer.
+
+**Repeats.** A blocked package is requested again on every `npm install`. An event with the same package, version(s) and reason is therefore sent once per `repeatIntervalMinutes`; the metrics output still records every attempt.
+
+**With both layers configured**, put `webhook` in the `filters` and the `middlewares` block, like the rest of the configuration: name, scope and tarball blocks are reported by the middleware, removed versions by the filter.
+
+The `json` body. Each entry of `events` has the fields described in [Metrics & Monitoring](#-metrics--monitoring):
+
+```json
+{
+  "source": "verdaccio-security-filter",
+  "version": "1.5.0",
+  "sentAt": "2026-01-15T10:30:05.000Z",
+  "events": [
+    {
+      "timestamp": "2026-01-15T10:30:00.000Z",
+      "event": "block",
+      "packageName": "evil-pkg",
+      "version": "*",
+      "reason": "Package name matches blocked pattern"
+    }
+  ]
+}
+```
+
+`dropped` is added when earlier events were discarded because the queue was full.
+
+The `slack` body:
+
+```json
+{
+  "text": "*Verdaccio security filter*: 2 event(s)\n• blocked `evil-pkg`: Package name matches blocked pattern\n• blocked `lodash` (2 version(s): 4.17.19, 4.17.20): Package has 2 vulnerable version(s)"
+}
+```
 
 ### Package Age Options
 

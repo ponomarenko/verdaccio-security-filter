@@ -3,9 +3,11 @@ import * as path from 'path';
 import { MetricsConfig, MetricsData } from '../types';
 import { CheckerLog } from './logger';
 import { LRUCache } from './lru-cache';
+import { WebhookNotifier } from './webhook';
 
 /**
- * Metrics collector for tracking security events
+ * Records security events: writes them to the metrics output and hands them to the webhook.
+ * The two are independent, either can be enabled without the other.
  */
 export class MetricsCollector {
     private config: MetricsConfig;
@@ -18,7 +20,12 @@ export class MetricsCollector {
     private recentlyFiltered = new LRUCache<string, number>(5000);
     private counts: Record<string, number> = { block: 0, author_blocked: 0 };
 
-    constructor(config?: MetricsConfig, private readonly dryRun = false, private readonly log: CheckerLog = console) {
+    constructor(
+        config?: MetricsConfig,
+        private readonly dryRun = false,
+        private readonly log: CheckerLog = console,
+        private readonly webhook?: WebhookNotifier,
+    ) {
         this.config = {
             enabled: config?.enabled || false,
             output: config?.output || 'stdout',
@@ -36,6 +43,9 @@ export class MetricsCollector {
      * Record a security event
      */
     record(event: MetricsData): void {
+        const recorded = this.dryRun ? { ...event, dryRun: true } : event;
+        this.webhook?.notify(recorded);
+
         if (!this.config.enabled) {
             return;
         }
@@ -45,7 +55,7 @@ export class MetricsCollector {
         }
 
         this.counts[event.event] = (this.counts[event.event] || 0) + 1;
-        this.metricsBuffer.push(this.dryRun ? { ...event, dryRun: true } : event);
+        this.metricsBuffer.push(recorded);
 
         if (this.metricsBuffer.length >= this.bufferSize) {
             this.flush();
@@ -78,7 +88,7 @@ export class MetricsCollector {
         event: MetricsData['event'] = 'block',
         metadata: Record<string, any> = {},
     ): void {
-        if (!this.config.enabled || versions.length === 0) {
+        if ((!this.config.enabled && !this.webhook?.enabled) || versions.length === 0) {
             return;
         }
 
@@ -151,6 +161,7 @@ export class MetricsCollector {
      * Cleanup - flush remaining metrics
      */
     cleanup(): void {
+        this.webhook?.cleanup();
         if (this.flushTimer) {
             clearInterval(this.flushTimer);
             this.flushTimer = null;

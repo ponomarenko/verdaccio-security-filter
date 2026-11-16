@@ -1042,4 +1042,96 @@ describe('SecurityFilterPlugin', () => {
             ]);
         });
     });
+
+    describe('webhook notifications', () => {
+        const webhook = { enabled: true, url: 'https://hooks.example.com/secret-token' };
+        let fetchMock: jest.SpyInstance;
+
+        const run = async (plugin: SecurityFilterPlugin, url: string) => {
+            let middleware: any;
+            plugin.register_middlewares({ use: (fn: any) => (middleware = fn) } as any, {} as any, {} as any);
+            const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), send: jest.fn() } as any;
+            const next = jest.fn();
+            await middleware({ method: 'GET', url }, res, next);
+            return { res, next };
+        };
+        const sentEvents = () => fetchMock.mock.calls.flatMap(call => JSON.parse(call[1].body).events);
+
+        beforeEach(() => {
+            fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async () => new Response(null, { status: 200 }));
+        });
+
+        afterEach(() => jest.restoreAllMocks());
+
+        it('should report metadata and tarball requests refused by the middleware, without metrics enabled', async () => {
+            const plugin = new SecurityFilterPlugin({
+                blockedPatterns: ['^evil-'],
+                blockedVersions: ['lodash@4.17.20'],
+                webhook,
+            } as any, pluginOptions);
+
+            const metadata = await run(plugin, '/evil-pkg');
+            await run(plugin, '/evil-pkg');                    // npm retries; one notification is enough
+            const tarball = await run(plugin, '/lodash/-/lodash-4.17.20.tgz');
+            await run(plugin, '/lodash/-/lodash-4.17.21.tgz'); // allowed
+            await (plugin as any).webhook.flush();
+
+            expect(metadata.res.status).toHaveBeenCalledWith(403);
+            expect(tarball.res.status).toHaveBeenCalledWith(403);
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+            expect(sentEvents()).toEqual([
+                expect.objectContaining({ event: 'block', packageName: 'evil-pkg', version: '*', reason: 'Package name matches blocked pattern' }),
+                expect.objectContaining({ event: 'block', packageName: 'lodash', version: '4.17.20', reason: 'Exact version match in blocklist' }),
+            ]);
+        });
+
+        it('should report versions removed in filter_metadata', async () => {
+            const plugin = new SecurityFilterPlugin({
+                versionRangeRules: [{ package: 'my-lib', range: '<2.0.0', strategy: 'block' }],
+                webhook,
+            } as any, pluginOptions);
+
+            await plugin.filter_metadata({
+                name: 'my-lib',
+                versions: { '1.0.0': { name: 'my-lib', version: '1.0.0' }, '2.0.0': { name: 'my-lib', version: '2.0.0' } },
+                'dist-tags': { latest: '2.0.0' },
+            } as any);
+            await (plugin as any).webhook.flush();
+
+            expect(sentEvents()).toEqual([
+                expect.objectContaining({ packageName: 'my-lib', reason: 'Version blocked by rules', metadata: { versions: ['1.0.0'] } }),
+            ]);
+        });
+
+        it('should report what dry-run would block, and block nothing', async () => {
+            const plugin = new SecurityFilterPlugin({ blockedPatterns: ['^evil-'], dryRun: true, webhook } as any, pluginOptions);
+
+            const { res, next } = await run(plugin, '/evil-pkg');
+            await (plugin as any).webhook.flush();
+
+            expect(next).toHaveBeenCalled();
+            expect(res.status).not.toHaveBeenCalled();
+            expect(sentEvents()).toEqual([expect.objectContaining({ packageName: 'evil-pkg', dryRun: true })]);
+        });
+
+        it('should list the webhook among the enabled features without logging its URL', () => {
+            const info = pluginOptions.logger.info as jest.Mock;
+            info.mockClear();
+            new SecurityFilterPlugin({ webhook } as any, pluginOptions);
+
+            const messages = info.mock.calls.flat().join('\n');
+            expect(messages).toContain('features: webhook');
+            expect(messages).toContain('Webhook notifications enabled: hooks.example.com (json)');
+            expect(messages).not.toContain('secret-token');
+        });
+
+        it('should send nothing when no webhook is configured', async () => {
+            const plugin = new SecurityFilterPlugin({ blockedPatterns: ['^evil-'] } as any, pluginOptions);
+
+            await run(plugin, '/evil-pkg');
+            await (plugin as any).webhook.flush();
+
+            expect(fetchMock).not.toHaveBeenCalled();
+        });
+    });
 });
