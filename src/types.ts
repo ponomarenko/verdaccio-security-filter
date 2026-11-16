@@ -43,6 +43,19 @@ export interface MetricsConfig {
     filePath?: string;
 }
 
+export interface WebhookConfig {
+    enabled: boolean;
+    /** Endpoint that receives the events. `${NAME}` is replaced with the environment variable NAME. */
+    url: string;
+    /** 'json' posts the events as they are; 'slack' posts `{ text }` for Slack-compatible incoming webhooks. */
+    format?: 'json' | 'slack';
+    /** Extra request headers, e.g. Authorization. Values support `${NAME}` as well. */
+    headers?: Record<string, string>;
+    timeoutMs?: number;
+    /** The same event is sent at most once per this many minutes; 0 sends every occurrence. */
+    repeatIntervalMinutes?: number;
+}
+
 export interface PackageAgeConfig {
     enabled: boolean;
     minPackageAgeDays: number; // Minimum age in days for a package to be accepted
@@ -79,6 +92,7 @@ export interface SecurityConfig extends Config {
     cveCheck?: CVECheckConfig;
     logger?: LoggerConfig;
     metrics?: MetricsConfig;
+    webhook?: WebhookConfig;
     packageAge?: PackageAgeConfig;
     authorFilter?: AuthorFilterConfig;
 

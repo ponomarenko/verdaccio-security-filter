@@ -113,6 +113,14 @@ middlewares:
       enabled: true
       path: ./security-metrics.jsonl
 
+    # Webhook notifications: block events are POSTed to this endpoint.
+    # ${NAME} is replaced with the environment variable NAME, so the secret stays out of this file.
+    # webhook:
+    #   enabled: true
+    #   url: ${SECURITY_WEBHOOK_URL}
+    #   format: slack           # json (default) or slack
+    #   repeatIntervalMinutes: 60
+
 # Web UI settings
 web:
   title: Verdaccio with Full Security Protection

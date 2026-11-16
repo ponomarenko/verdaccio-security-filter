@@ -13,6 +13,7 @@ import { LicenseChecker } from './lib/license-checker';
 import { PackageAgeChecker } from './lib/package-age-checker';
 import { AuthorChecker } from './lib/author-checker';
 import { LRUCache } from './lib/lru-cache';
+import { WebhookNotifier } from './lib/webhook';
 
 // package.json sits next to both src/ and build/, and is always part of the published package.
 const PLUGIN_VERSION: string = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
@@ -50,6 +51,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
     private readonly securityRules: SecurityRules;
     private readonly blockedPatternRegexes: RegExp[];
     private readonly metrics: MetricsCollector;
+    private readonly webhook: WebhookNotifier;
     private readonly whitelistChecker: WhitelistChecker;
     private readonly cveChecker: CVEChecker;
     private readonly licenseChecker: LicenseChecker;
@@ -75,8 +77,9 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         // Initialize enhanced logger
         this.logger = new SecurityLogger(options.logger, this.config.logger, !!this.config.dryRun);
 
-        // Initialize metrics collector
-        this.metrics = new MetricsCollector(this.config.metrics, !!this.config.dryRun, this.logger);
+        // Initialize the event outputs: metrics and webhook notifications
+        this.webhook = new WebhookNotifier(this.config.webhook, PLUGIN_VERSION, this.logger);
+        this.metrics = new MetricsCollector(this.config.metrics, !!this.config.dryRun, this.logger, this.webhook);
 
         // Initialize whitelist checker
         this.whitelistChecker = new WhitelistChecker(this.config.whitelist, this.logger);
@@ -164,6 +167,10 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
             });
         }
 
+        if (this.webhook.enabled) {
+            this.logger.info(`Webhook notifications enabled: ${this.webhook.destination}`);
+        }
+
         if (this.config.mode === 'whitelist') {
             const summary = this.whitelistChecker.getSummary();
             this.logger.info(`Whitelist mode: ${summary.totalPackages} packages, ${summary.totalPatterns} patterns`);
@@ -185,6 +192,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
         if (this.config.dryRun) features.push('dry-run');
         if (this.config.mode === 'whitelist') features.push('whitelist-mode');
         if (this.config.metrics?.enabled) features.push('metrics');
+        if (this.webhook.enabled) features.push('webhook');
         if (this.config.cveCheck?.enabled) features.push('cve-checking');
         if (this.licenseChecker.enabled) features.push('license-filtering');
         if (this.config.packageAge?.enabled) features.push('package-age-verification');
@@ -329,6 +337,8 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 
                     if (blockResult.blocked) {
                         this.logger.warn(`[Middleware] [X] BLOCKED METADATA: ${packageName} - ${blockResult.reason}`);
+                        // filter_metadata never sees this request, so the event has to be recorded here.
+                        this.metrics.recordBlock(packageName, '*', blockResult.reason);
 
                         if (this.config.dryRun) {
                             return next();
@@ -767,6 +777,7 @@ export default class SecurityFilterPlugin implements IPluginMiddleware<SecurityC
 // Export utility classes for testing
 export { SecurityLogger } from './lib/logger';
 export { MetricsCollector } from './lib/metrics';
+export { WebhookNotifier } from './lib/webhook';
 export { WhitelistChecker } from './lib/whitelist-checker';
 export { CVEChecker } from './lib/cve-checker';
 export { LicenseChecker } from './lib/license-checker';
