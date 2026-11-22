@@ -6,6 +6,7 @@ Advanced security filter plugin for Verdaccio with **dual-layer protection archi
 [![npm version](https://img.shields.io/npm/v/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
 [![npm downloads](https://img.shields.io/npm/dm/verdaccio-security-filter.svg)](https://www.npmjs.com/package/verdaccio-security-filter)
 [![CI](https://github.com/ponomarenko/verdaccio-security-filter/actions/workflows/ci.yml/badge.svg)](https://github.com/ponomarenko/verdaccio-security-filter/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ponomarenko/verdaccio-security-filter/badge)](https://scorecard.dev/viewer/?uri=github.com/ponomarenko/verdaccio-security-filter)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-blue)]()
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](./package.json)
 [![Verdaccio](https://img.shields.io/badge/Verdaccio-6.x%20%7C%207.x-orange)]()
