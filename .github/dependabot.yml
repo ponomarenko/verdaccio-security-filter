@@ -7,6 +7,16 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # ts-jest has no TypeScript 7 support yet (peer typescript <7)
+      - dependency-name: typescript
+        versions: ['>=7']
+      # keep Node types aligned with engines.node (>=22)
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+      # v11+ drops the legacy plugin API types this plugin implements (verdaccio >=5)
+      - dependency-name: '@verdaccio/types'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
